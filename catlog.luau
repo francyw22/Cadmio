@@ -30,6 +30,33 @@ for _, arg in process.args do
     end
 end
 
+    local _classInherits = {
+        Part = {"Part","BasePart","PVInstance","Instance"},
+        MeshPart = {"MeshPart","BasePart","PVInstance","Instance"},
+        UnionOperation = {"UnionOperation","BasePart","PVInstance","Instance"},
+        WedgePart = {"WedgePart","BasePart","PVInstance","Instance"},
+        SpecialMesh = {"SpecialMesh","DataModelMesh","Instance"},
+        Humanoid = {"Humanoid","Instance"},
+        LocalScript = {"LocalScript","BaseScript","LuaSourceContainer","Instance"},
+        Script = {"Script","BaseScript","LuaSourceContainer","Instance"},
+        ModuleScript = {"ModuleScript","LuaSourceContainer","Instance"},
+        Folder = {"Folder","Instance"},
+        Model = {"Model","PVInstance","Instance"},
+        Frame = {"Frame","GuiObject","GuiBase2d","Instance"},
+        TextLabel = {"TextLabel","TextBase","GuiObject","GuiBase2d","Instance"},
+        TextButton = {"TextButton","TextBase","GuiButton","GuiObject","GuiBase2d","Instance"},
+        TextBox = {"TextBox","TextBase","GuiObject","GuiBase2d","Instance"},
+        ImageLabel = {"ImageLabel","GuiObject","GuiBase2d","Instance"},
+        ImageButton = {"ImageButton","GuiButton","GuiObject","GuiBase2d","Instance"},
+        ScreenGui = {"ScreenGui","LayerCollector","GuiBase","Instance"},
+        RemoteEvent = {"RemoteEvent","Instance"},
+        RemoteFunction = {"RemoteFunction","Instance"},
+        BindableEvent = {"BindableEvent","Instance"},
+        BindableFunction = {"BindableFunction","Instance"},
+        LocalizationTable = {"LocalizationTable","Instance"},
+        Translator = {"Translator","Instance"},
+    }
+end 
 local serviceNames = {
     Players = "Players",
     Workspace = "Workspace",
