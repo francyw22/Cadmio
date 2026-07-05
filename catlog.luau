@@ -190,7 +190,7 @@ local classParents = {
     ClientReplicator = {"ClientReplicator", "Instance"},
 }
 
-game.GetService = function(self, serviceName)
+game:GetService = function(self, serviceName)
     if serviceName == "VoiceChatService" then
         return {
             joinVoice = function() end,
