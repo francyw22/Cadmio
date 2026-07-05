@@ -190,21 +190,13 @@ local classParents = {
     ClientReplicator = {"ClientReplicator", "Instance"},
 }
 
--- Safe access to the `game` global. In some Lune versions / configurations
--- the `game` global is not auto-exposed (or the Roblox runtime failed to
--- initialize), which caused `attempt to index nil with 'GetService'` on
--- the next line. Fall back to `roblox.game` if available, and skip the
--- monkey-patch entirely if neither is present. Note: this patch only
--- affects the HOST environment; the sandboxed script uses its own
--- `env.game` proxy created in `createEnv` (see spyInstance call), so
--- skipping it is safe.
 local _game = game
 if _game == nil and roblox ~= nil then
     local ok, resolved = pcall(function() return (roblox).game end)
     if ok then _game = resolved end
 end
 
-print("hi") -- dump print: confirms we got past old line 193
+print("hi")
 
 if _game ~= nil then
     local oldGetService = _game.GetService
@@ -529,9 +521,11 @@ makeProxy = function(name: string): any
     return setmetatable({}, mt)
 end
 
-local function spyInstance(className: string, name: string?): any
+local function spyInstance(className: string, name: string?, silent: boolean?): any
     local varName = name or genVar("inst")
-    emit(string.format('local %s = Instance.new("%s")', varName, className))
+    if not silent then
+        emit(string.format('local %s = Instance.new("%s")', varName, className))
+    end
     return makeProxy(varName)
 end
 
@@ -580,11 +574,11 @@ local function createEnv()
     env.loadstring = makeProxy("loadstring")
     env.load = env.loadstring
 
-    env.game = spyInstance("DataModel", "game")
+    env.game = spyInstance("DataModel", "game", true)
     env.Game = env.game
-    env.workspace = spyInstance("Workspace", "workspace")
+    env.workspace = spyInstance("Workspace", "workspace", true)
     env.Workspace = env.workspace
-    env.script = spyInstance("LocalScript", "script")
+    env.script = spyInstance("LocalScript", "script", true)
 
     env.Instance = setmetatable({
         new = function(c)
@@ -806,46 +800,15 @@ local function beautify()
     lines = result
 end
 
--- darklua post-processing: uses the `darklua` binary (if available) to
--- format the dumped output with proper indentation, spacing and rule
--- transformations. Falls back silently to the raw concatenated output
--- if darklua is not on PATH or fails, so the script keeps working.
---
--- The darklua binary location is resolved as:
---   1. $DARKLUA_BIN env var (explicit override)
---   2. "darklua" (rely on PATH)
 local DARKLUA_BIN = (process.env.DARKLUA_BIN or "darklua") :: string
-
--- Custom beautifier: operates on the raw catlog output (one statement
--- per line) and applies the user's preferred style:
---   * Tables with multiple fields expand across multiple lines with
---     tab indentation; no trailing comma.
---   * `function() end` (empty body) expands to:
---       function()
---       <indent>end
---     …with correct indentation even when nested inside a call.
---   * Function call argument lists are NEVER split across lines, no
---     matter how long the line becomes. This matches the style used
---     by Catalyst UI dumps (Tora IsMe / cleaned scripts).
---   * Blank lines between logical groups are preserved.
---
--- This is implemented as a small line-oriented transformer rather than
--- a full Lua parser, because the catlog raw output is already one
--- statement per line — we only need to expand inline tables and empty
--- function bodies. String literals and long-bracket strings are
--- respected so we don't accidentally split on a comma inside a string.
 
 local function isValidIdent(s: string): boolean
     return s ~= "" and s:match("^[%a_][%w_]*$") ~= nil
 end
 
--- Split a table literal body (the part between `{` and `}`) into
--- top-level entries. Entries can be `key = value` or just `value`,
--- where value may itself be a nested table, function call, or string.
--- Returns a list of entry strings (trimmed).
 local function splitTableEntries(body: string): { string }
     local entries: { string } = {}
-    local depth = 0          -- paren / bracket / brace depth
+    local depth = 0
     local inStr = false
     local strDelim = ""
     local inLong = false
@@ -856,7 +819,6 @@ local function splitTableEntries(body: string): { string }
         local ch = body:sub(i, i)
         local two = body:sub(i, i + 1)
         if inLong then
-            -- Look for matching closing long bracket: ]]=...
             local close = "]" .. string.rep("=", longLevel) .. "]"
             if body:sub(i, i + #close - 1) == close then
                 inLong = false
@@ -877,9 +839,7 @@ local function splitTableEntries(body: string): { string }
             i += 1
             continue
         end
-        -- Not in string/long-bracket:
         if two == "[[" or (two == "[" and body:match("^%[=%[", i)) then
-            -- long-bracket string
             local m = body:match("^%[(=*)%[", i)
             if m then
                 inLong = true
@@ -906,16 +866,12 @@ local function splitTableEntries(body: string): { string }
         end
         i += 1
     end
-    -- last entry
     local last = body:sub(startIdx, #body)
     last = last:gsub("^%s+", ""):gsub("%s+$", "")
     if last ~= "" then table.insert(entries, last) end
     return entries
 end
 
--- Find the body of the OUTERMOST table literal that starts at position
--- `start` (which must point at the opening `{`). Returns
--- (bodyStart, bodyEnd) exclusive of braces, or nil if no balanced `{}`.
 local function findTableBody(s: string, start: number): (number?, number?)
     if s:sub(start, start) ~= "{" then return nil end
     local depth = 1
@@ -966,12 +922,8 @@ local function findTableBody(s: string, start: number): (number?, number?)
     return nil
 end
 
--- Expand a single table literal body into a multi-line string with
--- tab indentation. `baseIndent` is the indent string to apply to each
--- entry; the closing `}` is placed at `parentIndent`.
 local function expandTable(body: string, baseIndent: string, parentIndent: string): string
     local entries = splitTableEntries(body)
-    -- Don't expand empty or single-entry tables.
     if #entries <= 1 then
         if #entries == 0 then
             return "{}"
@@ -979,14 +931,9 @@ local function expandTable(body: string, baseIndent: string, parentIndent: strin
         return "{ " .. entries[1] .. " }"
     end
 
-    -- For each entry, recursively expand if it contains a nested
-    -- multi-entry table. We keep entries on a single line by default;
-    -- nested expansion happens via the same function on sub-bodies.
     local lines: { string } = {}
     for idx, entry in ipairs(entries) do
-        -- Recursively expand nested tables within this entry.
         local expanded = entry
-        -- Find the first `{` in the entry and try to expand its body.
         local bs, be = string.find(expanded, "{", 1, true)
         while bs do
             local bodyStart, bodyEnd = findTableBody(expanded, bs)
@@ -995,11 +942,9 @@ local function expandTable(body: string, baseIndent: string, parentIndent: strin
                 local innerEntries = splitTableEntries(innerBody)
                 if #innerEntries > 1 then
                     local innerExpanded = expandTable(innerBody, baseIndent .. "\t", baseIndent)
-                    -- Replace the table literal in `expanded`.
                     local before = expanded:sub(1, bs - 1)
-                    local after = expanded:sub(bodyEnd + 2) -- skip `}`
+                    local after = expanded:sub(bodyEnd + 2)
                     expanded = before .. innerExpanded .. after
-                    -- Re-scan from after `before` since offsets shifted.
                     local newBs = string.find(expanded, "{", #before + 1, true)
                     bs, be = newBs, newBs and (newBs + 1) or nil
                 else
@@ -1013,7 +958,6 @@ local function expandTable(body: string, baseIndent: string, parentIndent: strin
             if not bs then break end
         end
 
-        -- Strip trailing comma if present (we add our own between entries).
         expanded = expanded:gsub("%s*,%s*$", "")
         if idx == #entries then
             table.insert(lines, baseIndent .. expanded)
@@ -1024,9 +968,6 @@ local function expandTable(body: string, baseIndent: string, parentIndent: strin
     return "{\n" .. table.concat(lines, "\n") .. "\n" .. parentIndent .. "}"
 end
 
--- Find the FIRST `function() end` (empty body) at depth 0 starting from
--- position `start`. Returns (matchStart, matchEnd) covering the entire
--- `function() end` token, or nil if not found.
 local function findEmptyFunction(s: string, start: number): (number?, number?)
     local i = start
     local inStr = false
@@ -1064,11 +1005,8 @@ local function findEmptyFunction(s: string, start: number): (number?, number?)
             i += 1
             continue
         end
-        -- Match `function() end` or `function(...) end` with empty body.
-        -- We allow any number of args between parens.
         local fStart = s:match("^function%s*%(", i)
         if fStart then
-            -- Find matching `)` for the param list.
             local parenStart = s:find("(", i, true)
             if parenStart then
                 local depth = 1
@@ -1079,12 +1017,9 @@ local function findEmptyFunction(s: string, start: number): (number?, number?)
                     elseif c == ")" then depth -= 1 end
                     j += 1
                 end
-                -- j is now just past the matching `)`.
-                -- Skip whitespace, expect `end`.
                 local k = j
                 while k <= #s and (s:sub(k, k):match("%s")) do k += 1 end
                 if s:sub(k, k + 2) == "end" then
-                    -- Make sure `end` is followed by a word boundary
                     local after = s:sub(k + 3, k + 3)
                     if after == "" or not after:match("[%w_]") then
                         return i, k + 2
@@ -1097,22 +1032,14 @@ local function findEmptyFunction(s: string, start: number): (number?, number?)
     return nil
 end
 
--- Compute the leading indent of a line (tabs and spaces at the start).
 local function leadingIndent(line: string): string
     return line:match("^([\t ]*)") or ""
 end
 
--- Transform a single source line into one or more output lines,
--- applying: nested table expansion, then empty-function expansion.
 local function beautifyLine(line: string): { string }
     local indent = leadingIndent(line)
     local body = line:sub(#indent + 1)
 
-    -- 1) Expand nested multi-entry tables.
-    --    We do this iteratively: scan for `{`, find its body, expand if
-    --    multi-entry AND single-line (already-expanded tables have newlines
-    --    in their body so we skip them), replace, then skip past the
-    --    closing `}` of the expanded form to avoid re-processing.
     local function expandAllTables(s: string): string
         local result = s
         local progress = true
@@ -1127,8 +1054,6 @@ local function beautifyLine(line: string): { string }
                 local bodyStart, bodyEnd = findTableBody(result, bs)
                 if bodyStart and bodyEnd then
                     local innerBody = result:sub(bodyStart, bodyEnd)
-                    -- Only expand if the body is single-line (no newlines).
-                    -- Multi-line bodies are already expanded.
                     if not innerBody:find("\n", 1, true) then
                         local entries = splitTableEntries(innerBody)
                         if #entries > 1 then
@@ -1137,14 +1062,10 @@ local function beautifyLine(line: string): { string }
                             local after = result:sub(bodyEnd + 2)
                             result = before .. innerExpanded .. after
                             progress = true
-                            -- Skip past the entire expanded table to avoid
-                            -- re-finding its opening `{`.
                             pos = #before + #innerExpanded + 1
                             continue
                         end
                     end
-                    -- Either single-entry, empty, or already expanded —
-                    -- skip past this `{` to find the next one.
                     pos = bs + 1
                 else
                     pos = bs + 1
@@ -1156,16 +1077,6 @@ local function beautifyLine(line: string): { string }
 
     body = expandAllTables(body)
 
-    -- 2) Expand empty `function() end` (or `function(...) end`).
-    --    Each empty function becomes:
-    --      function(...)
-    --      end
-    --    The `end` is placed at the SAME indent level as the start of the
-    --    line (no extra tab), matching the user's preferred style:
-    --      X:Connect(function()
-    --      end)
-    --    Note: the function call context (e.g. `X:Connect(function() end)`)
-    --    keeps the surrounding args on the original line.
     local function expandAllEmptyFunctions(s: string): string
         local result = s
         local guard = 0
@@ -1174,8 +1085,6 @@ local function beautifyLine(line: string): { string }
             local fs, fe = findEmptyFunction(result, 1)
             if not fs then break end
             local fnText = result:sub(fs, fe)
-            -- Build replacement: "function(...)\n<indent>end"
-            -- `end` is at the line's base indent (same as the call's start).
             local params = fnText:match("^function(%s*%b())")
             local replacement = "function" .. (params or "()") .. "\n" .. indent .. "end"
             result = result:sub(1, fs - 1) .. replacement .. result:sub(fe + 1)
@@ -1185,12 +1094,9 @@ local function beautifyLine(line: string): { string }
 
     body = expandAllEmptyFunctions(body)
 
-    -- Split body back into multiple lines if any `\n` was inserted.
     local outLines: { string } = {}
     for line2 in body:gmatch("[^\n]*") do
         if line2 ~= "" then
-            -- First line keeps the original indent; subsequent lines
-            -- already include their own indent from expandTable/expandEmptyFunction.
             if #outLines == 0 and line2:sub(1, 1) ~= "\t" and line2:sub(1, 1) ~= " " then
                 table.insert(outLines, indent .. line2)
             else
@@ -1198,7 +1104,6 @@ local function beautifyLine(line: string): { string }
             end
         end
     end
-    -- Handle the case where body had no newlines.
     if #outLines == 0 then
         table.insert(outLines, indent .. body)
     elseif outLines[1]:sub(1, #indent) ~= indent and outLines[1]:sub(1, 1) ~= "\t" and outLines[1]:sub(1, 1) ~= " " then
@@ -1207,11 +1112,6 @@ local function beautifyLine(line: string): { string }
     return outLines
 end
 
--- Iterator over lines of a string. Returns one line at a time (without
--- the trailing newline). Blank lines (consecutive newlines) are yielded
--- as empty strings, so callers can preserve them. This avoids the
--- well-known `gmatch("[^\n]*")` quirk where each `\n` produces an extra
--- empty match.
 local function iterLines(s: string): () -> string?
     local pos = 1
     local len = #s
@@ -1237,7 +1137,6 @@ local function customBeautify(source: string): string
             end
         end
     end
-    -- Collapse 3+ consecutive blank lines down to 1.
     local collapsed: { string } = {}
     local blankRun = 0
     for _, l in ipairs(output) do
@@ -1249,7 +1148,6 @@ local function customBeautify(source: string): string
             table.insert(collapsed, l)
         end
     end
-    -- Trim trailing blank lines.
     while #collapsed > 0 and collapsed[#collapsed] == "" do
         table.remove(collapsed, #collapsed)
     end
@@ -1257,8 +1155,6 @@ local function customBeautify(source: string): string
 end
 
 local function darkluaBeautify(source: string): string
-    -- Kept for backwards compatibility; we now use customBeautify which
-    -- matches the user's preferred style exactly.
     return customBeautify(source)
 end
 
@@ -1291,8 +1187,6 @@ local function dump(source: string): string
     deadCodeElimination()
     beautify()
     local raw = table.concat(lines, "\n")
-    -- darklua works on a Lua source file; we feed the whole concatenated
-    -- output. If darklua isn't on PATH, we silently keep `raw`.
     return darkluaBeautify(raw)
 end
 
