@@ -111,6 +111,34 @@ function serialize(value: any, depth: number?): string
     return "nil"
 end
 
+local usedVarNames = {}
+local function sanitizeName(s: string): string
+    s = tostring(s or "")
+    s = string.gsub(s, "[^%w_]", "_")
+    if s == "" then return "v" end
+    if string.match(s, "^%d") then s = "_" .. s end
+    return s
+end
+
+local function makeDescriptiveVar(methodName: string?, firstArg: any?): string
+    if methodName == "GetService" and type(firstArg) == "string" then
+        local s = firstArg
+        return s
+    end
+    if (methodName == "WaitForChild" or methodName == "FindFirstChild" or
+        methodName == "FindFirstDescendant" or methodName == "FindFirstChildWhichIsA" or
+        methodName == "FindFirstChildOfClass") and type(firstArg) == "string" then
+        return sanitizeName(firstArg)
+    end
+    if (methodName == "Window" or methodName == "Tab" or methodName == "Section" or
+        methodName == "Toggle" or methodName == "Button" or methodName == "Dropdown" or
+        methodName == "Label" or methodName == "Slider" or methodName == "Colorpicker" or
+        methodName == "Textbox" or methodName == "Keybind" or methodName == "Toggle") then
+        return methodName
+    end
+    return genVar("v")
+end
+
 local makeProxy: (string) -> any
 
 makeProxy = function(name: string): any
@@ -120,6 +148,7 @@ makeProxy = function(name: string): any
         _isProxy = true,
         _parent = nil,
         _fieldName = nil,
+        _descriptive = false,
     }
     mt.__index = function(t, k)
         local ks = tostring(k)
@@ -152,8 +181,9 @@ makeProxy = function(name: string): any
 
         local cmt = getmetatable(t)
         local parent = cmt._parent
+        local fieldName = cmt._fieldName
         if parent and rawequal(args[1], parent) then
-            callExpr = proxyName(parent) .. ":" .. cmt._fieldName
+            callExpr = proxyName(parent) .. ":" .. fieldName
             markUsed(parent)
             startIdx = 2
         else
@@ -164,7 +194,17 @@ makeProxy = function(name: string): any
             table.insert(parts, serialize(args[i]))
         end
 
-        local retName = genVar("v")
+        local firstArg = args[startIdx]
+        local baseName = makeDescriptiveVar(fieldName, firstArg)
+        local retName = baseName
+        if usedVarNames[retName] then
+            local i = 2
+            while usedVarNames[baseName .. tostring(i)] do
+                i += 1
+            end
+            retName = baseName .. tostring(i)
+        end
+        usedVarNames[retName] = true
         emit(string.format('local %s = %s(%s)', retName, callExpr, table.concat(parts, ", ")))
         return makeProxy(retName)
     end
@@ -352,11 +392,11 @@ local function createEnv()
 
     env.task = {
         wait = function() return 0 end,
-        spawn = function(f, ...) emit("-- task.spawn()") end,
-        delay = function(t, f) emit("-- task.delay()") end,
+        spawn = function(f, ...) end,
+        delay = function(t, f) end,
         cancel = function() end,
         clock = function() return os.clock() end,
-        defer = function(f, ...) emit("-- task.defer()") end,
+        defer = function(f, ...) end,
         synchronize = function() end,
         desynchronize = function() end,
     }
@@ -396,12 +436,19 @@ local function createEnv()
     return env
 end
 
+local function isGenericVar(name: string): boolean
+    return name:match("^v%d+$") ~= nil or name:match("^color%d+$") ~= nil or name:match("^inst%d+$") ~= nil
+end
+
 local function deadCodeElimination()
     local result = {}
     for _, line in ipairs(lines) do
         local v = string.match(line, "^local ([%a_][%w_]*%d+) = (.+)$")
-        if v and (usedVars[v] or 0) == 0 then
-            table.insert(result, string.match(line, "^local [%a_][%w_]*%d+ = (.+)$"))
+        if v and isGenericVar(v) and (usedVars[v] or 0) == 0 then
+            local expr = string.match(line, "^local [%a_][%w_]*%d+ = (.+)$")
+            if not expr:match("^Color3%.") and not expr:match("^Instance%.new") and not expr:match("^Vector3%.") then
+                table.insert(result, expr)
+            end
         else
             table.insert(result, line)
         end
@@ -420,7 +467,7 @@ local function inlineVars()
         local defExpr = {}
         for i, line in ipairs(lines) do
             local v, expr = string.match(line, "^local ([%a_][%w_]*%d+) = (.+)$")
-            if v then
+            if v and isGenericVar(v) then
                 defIdx[v] = i
                 defExpr[v] = expr
             end
