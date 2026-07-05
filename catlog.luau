@@ -30,33 +30,6 @@ for _, arg in process.args do
     end
 end
 
-    local _classInherits = {
-        Part = {"Part","BasePart","PVInstance","Instance"},
-        MeshPart = {"MeshPart","BasePart","PVInstance","Instance"},
-        UnionOperation = {"UnionOperation","BasePart","PVInstance","Instance"},
-        WedgePart = {"WedgePart","BasePart","PVInstance","Instance"},
-        SpecialMesh = {"SpecialMesh","DataModelMesh","Instance"},
-        Humanoid = {"Humanoid","Instance"},
-        LocalScript = {"LocalScript","BaseScript","LuaSourceContainer","Instance"},
-        Script = {"Script","BaseScript","LuaSourceContainer","Instance"},
-        ModuleScript = {"ModuleScript","LuaSourceContainer","Instance"},
-        Folder = {"Folder","Instance"},
-        Model = {"Model","PVInstance","Instance"},
-        Frame = {"Frame","GuiObject","GuiBase2d","Instance"},
-        TextLabel = {"TextLabel","TextBase","GuiObject","GuiBase2d","Instance"},
-        TextButton = {"TextButton","TextBase","GuiButton","GuiObject","GuiBase2d","Instance"},
-        TextBox = {"TextBox","TextBase","GuiObject","GuiBase2d","Instance"},
-        ImageLabel = {"ImageLabel","GuiObject","GuiBase2d","Instance"},
-        ImageButton = {"ImageButton","GuiButton","GuiObject","GuiBase2d","Instance"},
-        ScreenGui = {"ScreenGui","LayerCollector","GuiBase","Instance"},
-        RemoteEvent = {"RemoteEvent","Instance"},
-        RemoteFunction = {"RemoteFunction","Instance"},
-        BindableEvent = {"BindableEvent","Instance"},
-        BindableFunction = {"BindableFunction","Instance"},
-        LocalizationTable = {"LocalizationTable","Instance"},
-        Translator = {"Translator","Instance"},
-    }
-end 
 local serviceNames = {
     Players = "Players",
     Workspace = "Workspace",
@@ -216,7 +189,6 @@ local classParents = {
     NetworkClient = {"NetworkClient", "Instance"},
     ClientReplicator = {"ClientReplicator", "Instance"},
 }
-end
 local lines = {}
 local varCount = 0
 local usedVars = {}
@@ -389,10 +361,29 @@ makeProxy = function(name: string): any
         local cmt = getmetatable(t)
         local parent = cmt._parent
         local fieldName = cmt._fieldName
-        if parent and rawequal(args[1], parent) then
+
+        local STATEMENT_METHODS = {
+            Connect = true, connect = true, Once = true, Disconnect = true,
+            Wait = true, wait = true, Destroy = true, Remove = true,
+            ClearAllChildren = true, DisconnectAll = true,
+            Init = true, Notify = true,
+            FireServer = true, FireClient = true, FireAllClients = true,
+            InvokeServer = true, InvokeClient = true,
+            Set = true, set = true, Add = true, Remove = true,
+            CaptureController = true, ClickButton1 = true, ClickButton2 = true,
+            GetChildren = true, GetDescendants = true,
+        }
+
+        local isMethod = false
+        if parent and n >= 1 and rawequal(args[1], parent) then
             callExpr = proxyName(parent) .. ":" .. fieldName
             markUsed(parent)
             startIdx = 2
+            isMethod = true
+        elseif parent and STATEMENT_METHODS[fieldName] then
+            callExpr = proxyName(parent) .. ":" .. fieldName
+            markUsed(parent)
+            isMethod = true
         else
             callExpr = name
         end
@@ -416,6 +407,13 @@ makeProxy = function(name: string): any
             retName = baseName .. tostring(i)
         end
         usedVarNames[retName] = true
+
+        local isStatementCall = isMethod and STATEMENT_METHODS[fieldName] ~= nil
+
+        if isStatementCall then
+            emit(string.format('%s(%s)', callExpr, table.concat(parts, ", ")))
+            return makeProxy(retName)
+        end
         emit(string.format('local %s = %s(%s)', retName, callExpr, table.concat(parts, ", ")))
         return makeProxy(retName)
     end
