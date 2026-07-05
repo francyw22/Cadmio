@@ -189,7 +189,6 @@ local classParents = {
     NetworkClient = {"NetworkClient", "Instance"},
     ClientReplicator = {"ClientReplicator", "Instance"},
 }
-end
 
 game.GetService = function(self, serviceName)
     if serviceName == "VoiceChatService" then
