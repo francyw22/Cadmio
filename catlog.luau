@@ -863,6 +863,15 @@ local function dump(source: string): string
     return table.concat(lines, "\n")
 end
 if Settings.ipt then
+    local ok, err = pcall(function()
+        if not fs.isFile(Settings.ipt) then
+            error("File not found: " .. Settings.ipt)
+        end
+    end)
+    if not ok then
+        stdio.write("Error: " .. tostring(err) .. "\n")
+        process.exit(1)
+    end
     local source = fs.readFile(Settings.ipt)
     local result = dump(source)
     fs.writeFile(Settings.out, result)
