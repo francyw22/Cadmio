@@ -561,7 +561,10 @@ local function createEnv()
     local function newCtor(name)
         return setmetatable({ new = function(...)
             local v = genVar(name:lower())
-            emit(string.format('local %s = %s.new(...)', v, name))
+            local parts = {}
+            local args = {...}
+            for i = 1, select("#", ...) do table.insert(parts, serialize(args[i])) end
+            emit(string.format('local %s = %s.new(%s)', v, name, table.concat(parts, ", ")))
             return makeProxy(v)
         end }, { __index = function(_, k) return makeProxy(name .. "." .. tostring(k)) end })
     end
@@ -570,10 +573,18 @@ local function createEnv()
     env.CFrame = newCtor("CFrame")
     env.UDim2 = newCtor("UDim2")
     env.UDim = newCtor("UDim")
+    local function argsToList(...)
+        local args = {...}
+        local parts = {}
+        for i = 1, select("#", ...) do
+            table.insert(parts, serialize(args[i]))
+        end
+        return table.concat(parts, ", ")
+    end
     env.Color3 = setmetatable({
-        new = function(...) local v = genVar("color"); emit(string.format('local %s = Color3.new(...)', v)); return makeProxy(v) end,
-        fromRGB = function(...) local v = genVar("color"); emit(string.format('local %s = Color3.fromRGB(...)', v)); return makeProxy(v) end,
-        fromHSV = function(...) local v = genVar("color"); emit(string.format('local %s = Color3.fromHSV(...)', v)); return makeProxy(v) end,
+        new = function(...) local v = genVar("color"); emit(string.format('local %s = Color3.new(%s)', v, argsToList(...))); return makeProxy(v) end,
+        fromRGB = function(...) local v = genVar("color"); emit(string.format('local %s = Color3.fromRGB(%s)', v, argsToList(...))); return makeProxy(v) end,
+        fromHSV = function(...) local v = genVar("color"); emit(string.format('local %s = Color3.fromHSV(%s)', v, argsToList(...))); return makeProxy(v) end,
     }, { __index = function(_, k) return makeProxy("Color3." .. tostring(k)) end })
     env.Rect = newCtor("Rect")
     env.Ray = newCtor("Ray")
@@ -736,10 +747,21 @@ local function beautify()
     if not Settings.beautify then return end
     local result = {}
     local lastLine = nil
+    local lastGroup = nil
     for _, line in ipairs(lines) do
         if line ~= lastLine then
+            local group = nil
+            if line:match(":GetService%(") then group = "service"
+            elseif line:match(":Tab%(") then group = "tab"
+            elseif line:match(":Section%(") then group = "section"
+            elseif line:match(":Connect%(") then group = "connect"
+            end
+            if group and group ~= lastGroup and #result > 0 then
+                table.insert(result, "")
+            end
             table.insert(result, line)
             lastLine = line
+            if group then lastGroup = group end
         end
     end
     lines = result
