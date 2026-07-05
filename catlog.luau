@@ -1,4 +1,3 @@
--- so bad atm
 local fs = require("@lune/fs")
 local process = require("@lune/process")
 local stdio = require("@lune/stdio")
@@ -18,9 +17,16 @@ local Settings = {
 for _, arg in process.args do
     local k, v = string.match(arg, "([%w_]+)=(.+)")
     if k then
+        if v:sub(1,1) == "'" and v:sub(-1) == "'" then v = v:sub(2, -2)
+        elseif v:sub(1,1) == '"' and v:sub(-1) == '"' then v = v:sub(2, -2) end
         Settings[k] = if v == "true" then true elseif v == "false" then false elseif tonumber(v) then tonumber(v) else v
-    elseif not Settings.ipt and not string.match(arg, "^%-") then
-        Settings.ipt = arg
+    else
+        local val = arg
+        if val:sub(1,1) == "'" and val:sub(-1) == "'" then val = val:sub(2, -2)
+        elseif val:sub(1,1) == '"' and val:sub(-1) == '"' then val = val:sub(2, -2) end
+        if not Settings.ipt and not string.match(val, "^%-") then
+            Settings.ipt = val
+        end
     end
 end
 
