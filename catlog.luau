@@ -3490,6 +3490,13 @@ local knownCFunctions = {}
 local functionAddrMap = setmetatable({}, { __mode = "k" })
 local frozenTables = setmetatable({}, { __mode = "k" })
 local readonlyTables = setmetatable({}, { __mode = "k" })
+local hookTargets = setmetatable({}, { __mode = "k" })
+local hookReplacements = setmetatable({}, { __mode = "k" })
+local originalBehaviors = setmetatable({}, { __mode = "k" })
+local cloneSources = setmetatable({}, { __mode = "k" })
+local cloneWrappers = setmetatable({}, { __mode = "k" })
+local cclosureSet = setmetatable({}, { __mode = "k" })
+local constantEdits = setmetatable({}, { __mode = "k" })
 local applyReadonlyGuard: (any) -> ()
 local function registerCFunctions(lib)
     if type(lib) == "table" then
@@ -3528,7 +3535,6 @@ local function createEnv()
     env = {}
     env._G = {}
     env._ENV = env
-    local cclosureSet = setmetatable({}, { __mode = "k" })
     local function getFunctionWhat(f)
         if type(f) ~= "function" then
             return nil
@@ -3589,7 +3595,11 @@ local function createEnv()
     knownCFunctions[env.math.round] = true
     knownCFunctions[env.math.noise] = true
     knownCFunctions[env.math.randomseed] = true
-    env.string = copyLib(string)
+    env.string = copyLib(string, {
+        dump = function(f, strip)
+            error("unable to dump given function", 2)
+        end,
+    })
     registerCFunctions(env.string)
     env.table = copyLib(table, {
         isfrozen = function(t)
@@ -3674,10 +3684,7 @@ local function createEnv()
     env.os = setmetatable({
         time = os.time,
         date = os.date,
-        clock = function()
-            local t = os.clock()
-            return t * 0.5
-        end,
+        clock = os.clock,
         difftime = os.difftime,
     }, {
         _serialName = "os",
@@ -3686,18 +3693,43 @@ local function createEnv()
     })
     env.debug = setmetatable({
         info = function(f, what)
+            what = what or "fl"
             if type(f) == "function" then
-                if knownCFunctions[f] then
-                    if what == "s" then return "[C]" end
-                    if what == "l" then return -1 end
-                    if what == "n" then return "" end
-                    if what == "a" then return 0 end
-                    if what == "f" then return f end
-                    return "[C]"
+                local isC = knownCFunctions[f] or cclosureSet[f]
+                local info = {}
+                if isC then
+                    info.source = "[C]"
+                    info.short_src = "[C]"
+                    info.what = "C"
+                    info.currentline = -1
+                    info.linedefined = -1
+                    info.lastlinedefined = -1
+                    info.name = ""
+                    info.nups = 0
+                    info.nparams = 0
+                    info.is_vararg = false
+                    info.func = f
+                else
+                    local ok, src = pcall(_realDebugInfo, f, "s")
+                    if ok then info.source = src info.short_src = src end
+                    local ok2, what2 = pcall(_realDebugInfo, f, "w")
+                    if ok2 then info.what = what2 else info.what = "Lua" end
+                    local ok3, ln = pcall(_realDebugInfo, f, "l")
+                    if ok3 then info.currentline = ln else info.currentline = -1 end
+                    local ok4, ld = pcall(_realDebugInfo, f, "l")
+                    if ok4 then info.linedefined = ld else info.linedefined = -1 end
+                    info.lastlinedefined = -1
+                    local ok5, nm = pcall(_realDebugInfo, f, "n")
+                    if ok5 then info.name = nm or "" else info.name = "" end
+                    local ok6, np = pcall(_realDebugInfo, f, "a")
+                    if ok6 then info.nparams = np info.is_vararg = false else info.nparams = 0 info.is_vararg = false end
+                    info.nups = 0
+                    local ok7, nups = pcall(_realDebugInfo, f, "u")
+                    if ok7 and type(nups) == "number" then info.nups = nups end
+                    info.func = f
                 end
-                local ok, src = pcall(_realDebugInfo, f, what)
-                if ok then return src end
-                return nil
+                if what == "*" or what == "" then return info end
+                return info
             end
             if type(f) == "number" then
                 local ok, val = pcall(_realDebugInfo, f, what)
@@ -3715,19 +3747,60 @@ local function createEnv()
         end,
     }, {
         __index = function(_, k)
+            if k == "getinfo" then
+                return function(f, what)
+                    return env.debug.info(f, what)
+                end
+            end
             if k == "getupvalue" then
                 return function(f, i)
                     if type(f) ~= "function" then error("invalid argument #1 to 'getupvalue'", 2) end
-                    if knownCFunctions[f] then
+                    if knownCFunctions[f] or cclosureSet[f] then
                         error("attempt to get upvalue of C closure", 2)
                     end
-                    error("attempt to get upvalue of closure", 2)
+                    return nil
                 end
             end
             if k == "setupvalue" then
                 return function(f, i, v)
                     if type(f) ~= "function" then error("invalid argument #1 to 'setupvalue'", 2) end
-                    error("attempt to set upvalue of closure", 2)
+                    if knownCFunctions[f] or cclosureSet[f] then
+                        error("attempt to set upvalue of C closure", 2)
+                    end
+                    return v
+                end
+            end
+            if k == "getconstants" then
+                return function(f)
+                    if type(f) ~= "function" then error("invalid argument #1 to 'getconstants'", 2) end
+                    if knownCFunctions[f] or cclosureSet[f] then
+                        error("attempt to get constants of C closure", 2)
+                    end
+                    local edits = constantEdits[f]
+                    if edits then
+                        local result = {}
+                        for k, v in pairs(edits) do result[k] = v end
+                        return result
+                    end
+                    return {}
+                end
+            end
+            if k == "setconstant" then
+                return function(f, idx, val)
+                    if type(f) ~= "function" then error("invalid argument #1 to 'setconstant'", 2) end
+                    if knownCFunctions[f] or cclosureSet[f] then
+                        error("attempt to set constant of C closure", 2)
+                    end
+                    if type(idx) ~= "number" then error("invalid argument #2 to 'setconstant'", 2) end
+                    if not constantEdits[f] then constantEdits[f] = {} end
+                    constantEdits[f][idx] = val
+                    return true
+                end
+            end
+            if k == "getupvalues" then
+                return function(f)
+                    if type(f) ~= "function" then error("invalid argument #1 to 'getupvalues'", 2) end
+                    return {}
                 end
             end
             if k == "setfenv" then
@@ -4321,10 +4394,15 @@ local function createEnv()
         if not ok and tostring(err):find(BUDGET_ERROR, 1, true) then
         end
     end
+    local realClock = os.clock
     local taskTbl = {
         wait = function(time)
             yieldTick(); tick()
-            return time or 0.015
+            local t = tonumber(time) or 0.015
+            local start = realClock()
+            while realClock() - start < t do
+            end
+            return t, 1
         end,
         spawn = function(f, ...)
             tick()
@@ -4360,7 +4438,28 @@ local function createEnv()
     env.elapsedTime = function() return os.clock() end
     env.elapsedtime = env.elapsedTime
     env.stats = function() return {} end
-    env.hookfunction = function(...) return ... end
+    env.hookfunction = function(target, replacement)
+        if type(target) ~= "function" then error("invalid argument #1 to 'hookfunction'", 2) end
+        if type(replacement) ~= "function" then error("invalid argument #2 to 'hookfunction'", 2) end
+        local prevReplacement = hookReplacements[target]
+        local prevOriginal = originalBehaviors[target]
+        local original = prevOriginal or target
+        hookTargets[target] = true
+        hookReplacements[target] = replacement
+        originalBehaviors[target] = original
+        local wrappedOriginal = function(...)
+            if hookReplacements[target] then
+                return hookReplacements[target](...)
+            end
+            return original(...)
+        end
+        local toReturn = prevReplacement or wrappedOriginal
+        if not prevReplacement then
+            cclosureSet[toReturn] = true
+        end
+        return toReturn
+    end
+    knownCFunctions[env.hookfunction] = true
     env.checkcaller = function() return false end
     env.getrawmetatable = function(t) return getmetatable(t) end
     env.identifyexecutor = function() return "envlog", "1.0" end
@@ -4371,8 +4470,13 @@ local function createEnv()
     env.writefile = function() end
     env.isfile = function() return false end
     env.newcclosure = function(f)
-        if type(f) == "function" then cclosureSet[f] = true end
-        return f
+        if type(f) ~= "function" then error("invalid argument #1 to 'newcclosure'", 2) end
+        local wrapper = function(...)
+            return f(...)
+        end
+        cclosureSet[wrapper] = true
+        cloneSources[wrapper] = f
+        return wrapper
     end
     env.iscclosure = function(f)
         if type(f) ~= "function" then return false end
@@ -4475,7 +4579,18 @@ local function createEnv()
         return "decompile failed"
     end
     env.getscripthash = function() return "" end
-    env.clonefunction = function(f) return f end
+    env.clonefunction = function(f)
+        if type(f) ~= "function" then error("invalid argument #1 to 'clonefunction'", 2) end
+        local source = cloneSources[f] or f
+        local originalBehavior = originalBehaviors[f] or source
+        local wrapper = function(...)
+            return originalBehavior(...)
+        end
+        cloneSources[wrapper] = source
+        cloneWrappers[wrapper] = f
+        if cclosureSet[f] then cclosureSet[wrapper] = true end
+        return wrapper
+    end
     env.cloneref = function(ref) return ref end
     env.compareinstances = function(a, b) return a == b end
     env.setclipboard = function() end
@@ -4587,7 +4702,23 @@ local function createEnv()
     env.Drawing = setmetatable({}, { __index = function(_, k) return makeProxy("Drawing." .. tostring(k)) end })
     env.crypt = setmetatable({}, { __index = function(_, k) return function() return makeProxy("crypt." .. tostring(k)) end end })
     env.base64 = { encode = function(s) return s or "" end, decode = function(s) return s or "" end }
-    env.syn = setmetatable({}, { __index = function(_, k) return makeProxy("syn." .. tostring(k)) end })
+    env.syn = setmetatable({
+        request = function() return { StatusCode = 200, Body = "", Success = true } end,
+        queue = function() return {} end,
+        crypt = env.crypt,
+        base64 = env.base64,
+        aux = setmetatable({}, { __index = function(_, k) return function() return nil end end }),
+    }, { __index = function(_, k) return function() return nil end end })
+    env.getregistry = function()
+        return {}
+    end
+    env.getidentity = function() return 2 end
+    env.getthread = function() return coroutine.running() end
+    env.getstack = function() return {} end
+    env.getparams = function() return {} end
+    env.isourclosure = function() return true end
+    env.isexecutorclosure = function() return true end
+    env.isfunction = function(f) return type(f) == "function" end
     env.process = setmetatable({
         exit = function() emit("-- process.exit() called") end,
         args = {}, env = {}, cwd = function() return "/" end, os = "linux", pid = 1,
@@ -4692,7 +4823,6 @@ end
 local DARKLUA_BIN = (process.env.DARKLUA_BIN or "darklua") :: string
 local SANDBOX_PRELUDE = table.concat({
     "local io = nil",
-    "local debug = nil",
     "local load = nil",
     "local loadstring = nil",
     "local dofile = nil",
