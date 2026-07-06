@@ -224,7 +224,7 @@ local lines = {}
 local varCount = 0
 local usedVars = {}
 local opCount = 0
-local OP_BUDGET = 5000
+local OP_BUDGET = 5000000
 local BUDGET_ERROR = "__OP_BUDGET_EXCEEDED__"
 
 local function emit(text: string)
@@ -423,6 +423,66 @@ local propertyTypes: { [string]: string } = {
     FallenPartsDestroyHeight = "number",
     Gravity = "number",
     PlaceId = "number", JobId = "string", GameId = "number", CreatorId = "number",
+    Massless = "boolean", CanTouch = "boolean", CanQuery = "boolean",
+    JumpHeight = "number", MoveDirection = "Vector3",
+    OutdoorAmbient = "Color3", Ambient = "Color3", ShadowColor = "Color3",
+    DistributedGameTime = "number",
+    MembershipType = "EnumItem",
+    MouseIconEnabled = "boolean",
+    MouseBehavior = "EnumItem", ActuatorType = "EnumItem",
+    FilterType = "EnumItem", CollisionFidelity = "EnumItem",
+    FormFactor = "EnumItem", Flavor = "EnumItem",
+    DisplayDistanceType = "EnumItem", Stiffness = "number",
+    Damping = "number", FreeLength = "number",
+    LimitsEnabled = "boolean", MaxForce = "number",
+    MaxVelocity = "number", MotorMaxAcceleration = "number",
+    PrimaryAxisOnly = "boolean",
+    Attachment0 = "Instance", Attachment1 = "Instance",
+    Visible = "boolean", Color = "Color3",
+    Thickness = "number", Transparency = "number",
+    VREnabled = "boolean",
+    Status = "EnumItem", TextTruncate = "EnumItem",
+    Intensity = "number",
+    Archivable = "boolean",
+    TextStrokeTransparency = "number", TextStrokeColor3 = "Color3",
+    RichText = "boolean", MaxVisibleGraphemes = "number",
+    OpenTypeFeatures = "OpenTypeFeatures",
+    StatusText = "string", HealthDisplayType = "EnumItem",
+    RequiresNeck = "boolean", DisplayName = "string",
+    AudioDeviceInput = "Instance",
+    DistributedGameTime = "number",
+    Width = "number", Height = "number",
+    Character = "Instance", CharacterAppearance = "string",
+    CameraMode = "EnumItem", CameraSubject = "Instance",
+    headColor = "BrickColor", BodyColor = "BrickColor",
+    TextXAlignment = "EnumItem", TextYAlignment = "EnumItem",
+    TextTruncate = "EnumItem", TextDirection = "EnumItem",
+    VerticalAlignment = "EnumItem", HorizontalAlignment = "EnumItem",
+    ScaleType = "EnumItem", SliceScale = "number",
+    TileSize = "UDim2", SliceCenter = "Rect",
+    ImageRectOffset = "Vector2", ImageRectSize = "Vector2",
+    ResampleMode = "EnumItem", Scale9Corner = "EnumItem",
+    Content = "string", LinkColor = "Color3",
+    FontFace = "Font", LineHeight = "number",
+    TruncateAt = "EnumItem",
+    JumpHeight = "number", JumpPower = "number",
+    WalkSpeed = "number", HipHeight = "number",
+    Health = "number", MaxHealth = "number",
+    WalkToPoint = "Vector3", WalkToPart = "Instance",
+    AutoRotate = "boolean", PlatformStand = "boolean",
+    Sit = "boolean", MoveDirection = "Vector3",
+    CameraOffset = "Vector3",
+    MaxSlopeAngle = "number",
+    StateChanged = "RBXScriptSignal",
+    identity = "CFrame",
+    DistributedGameTime = "number",
+    PlaceholderText = "string", PlaceholderColor3 = "Color3",
+    Cursor = "string", Modal = "boolean",
+    ShowNativeInput = "boolean", TextBounds = "Vector2",
+    SelectionStart = "number", CursorPosition = "number",
+    MaximumVisibleGraphemes = "number",
+    BackgroundColor3 = "Color3", BorderColor3 = "Color3",
+    SizeConstraint = "EnumItem",
 }
 
 local propertyChangeCallbacks: { [string]: { (any) -> () } } = {}
@@ -431,6 +491,8 @@ local instanceTags: { [string]: { string } } = {}
 local serviceCache: { [string]: any } = {}
 local destroyedInstances: { [string]: boolean } = {}
 local memStorage: { [string]: any } = {}
+local parentChildMap: { [string]: { [string]: any } } = {}
+local workspaceProxy: any = nil
 
 local function firePropertyChange(proxyNameStr: string, fieldName: string, value: any)
     local key = proxyNameStr .. "." .. fieldName
@@ -474,7 +536,8 @@ makeProxy = function(name: string): any
         StudsOffset = true, Radians = true,
         UserId = true, AccountAge = true, AccountIdReplicate = true,
         Health = true, MaxHealth = true, WalkSpeed = true, JumpPower = true,
-        HipHeight = true, CameraMinZoomDistance = true, CameraMaxZoomDistance = true,
+        JumpHeight = true, HipHeight = true,
+        CameraMinZoomDistance = true, CameraMaxZoomDistance = true,
         Volume = true, Pitch = true, TimeLength = true, TimePosition = true,
         VolumeAlt = true,
         Brightness = true, FogEnd = true, FogStart = true,
@@ -503,6 +566,10 @@ makeProxy = function(name: string): any
         DeleteOnFallenDestroy = true,
         Absent = true,
         WalkSpeedScale = true, WalkDirection = true,
+        DistributedGameTime = true,
+        Intensity = true, Brightness = true,
+        Threshold = true, BlurSize = true,
+        MaxBlurSize = true, Radius = true,
     }
     local booleanProps = {
         Anchored = true, CanCollide = true, CanTouch = true, CanQuery = true,
@@ -513,6 +580,17 @@ makeProxy = function(name: string): any
         GamepadEnabled = true, AccelerometerEnabled = true, GyroscopeEnabled = true,
         VRDevice = true, AutoJumpEnabled = true, DevEnableMouseLock = true,
         ClipsDescendants = true, GlobalShadows = true, Outlines = true,
+        Massless = true, Archivable = true, CastShadow = true,
+        AlwaysOnTop = true, Modal = true, ShowHideState = true,
+        Draggable = true, Selectable = true, RoundedScale = true,
+        RichText = true, IgnoreGuiInset = true, ResetOnSpawn = true,
+        DisplayOrder = true, TextScaled = true, TextWrapped = true,
+        BorderVisible = true, BorderScaleMode = true,
+        VREnabled = true, SuppressNativeAudio = true,
+        RequiresNeck = true, AutomaticScaling = true,
+        LegacyAudioClustering = true,
+        MouseIconEnabled = true, ModalEnabled = true,
+        VRRotationIntensity = true,
     }
     local stringProps = {
         Name = true, ClassName = true, Source = true, Text = true,
@@ -521,6 +599,7 @@ makeProxy = function(name: string): any
         LocalId = true, FilePath = true, FilePathString = true,
     }
     local eventProps = {
+        Event = true,
         Heartbeat = true, RenderStepped = true, Stepped = true,
         Changed = true, ChildAdded = true, ChildRemoved = true,
         DescendantAdded = true, DescendantRemoving = true,
@@ -544,6 +623,11 @@ makeProxy = function(name: string): any
         OnServerEvent = true, OnClientEvent = true,
         OnServerInvoke = true, OnClientInvoke = true,
         Close = true, HttpRequest = true,
+        Jumping = true, StateChanged = true, Running = true,
+        FreeFalling = true, Landing = true,
+        Swimming = true, Climbing = true,
+        Seated = true, Died = true,
+        HealthChanged = true,
     }
     local functionProps = {
         GetService = true, FindFirstChild = true, WaitForChild = true,
@@ -582,14 +666,100 @@ makeProxy = function(name: string): any
         IsDescendantOf = true, IsAncestorOf = true,
         GetDebugId = true,
     }
+    local knownServiceNames = {
+        Players = true, Workspace = true, Lighting = true, ReplicatedStorage = true,
+        ServerStorage = true, ServerScriptService = true, StarterGui = true,
+        StarterPack = true, StarterPlayer = true, ReplicatedFirst = true,
+        RunService = true, TweenService = true, UserInputService = true,
+        ContextActionService = true, HttpService = true, MarketplaceService = true,
+        SoundService = true, TextService = true, GuiService = true,
+        CollectionService = true, MemStorageService = true,
+        LocalizationService = true, PhysicsService = true, HapticService = true,
+        AdService = true, DataStoreService = true, AchievementService = true,
+        AnimationClipProvider = true, BadgeService = true, Chat = true,
+        ContentProvider = true, CoreGui = true, Debris = true,
+        GamePassService = true, GroupService = true, LogService = true,
+        NotificationService = true, PathfindingService = true,
+        PointsService = true, SelectionService = true, SocialService = true,
+        Stats = true, Teams = true, TeleportService = true, TextChatService = true,
+        VirtualInputManager = true, VirtualUser = true, VoiceChatService = true,
+        AnalyticsService = true, ProximityPromptService = true,
+        MaterialService = true, AssetService = true,
+        AvatarEditorService = true, AvatarCreationService = true,
+        BrowserService = true, BulkImportService = true,
+        CacheStoreService = true, CaptureService = true,
+        ConfigurationService = true, CookieStoreService = true,
+        DebuggablePlugin = true, DeviceService = true,
+        DraftsService = true, EditorService = true,
+        EngagementService = true, ExperienceService = true,
+        FriendService = true, GamepadService = true,
+        GroupStoreService = true, HotelService = true,
+        HubService = true, InternalService = true,
+        LanguageService = true, LegacyChatService = true,
+        LocalStorageService = true, LoginService = true,
+        LuauScriptManagerService = true, MarketService = true,
+        MessagingService = true, MouseService = true,
+        NetworkClient = true, NetworkServer = true,
+        OAuthService = true, PersistentStorageService = true,
+        PlatformService = true, PluginService = true,
+        PresenceService = true, PublishService = true,
+        RbxAnalyticsService = true, RibbonNotificationService = true,
+        RopostService = true, RubberbandingService = true,
+        RuntimeDiscoveryService = true, ScriptContext = true,
+        SearchService = true, ServerNetwork = true,
+        ServiceManager = true, SessionService = true,
+        SharedTableRegistry = true, SubscriptionService = true,
+        SuggestionService = true, TestService = true,
+        ThirdPartyUserService = true, ThumbnailService = true,
+        TimerService = true, TouchInputService = true,
+        UniTask = true, UnvalidatedAssetService = true,
+        UserService = true, VideoCaptureService = true,
+        VideoService = true, VRService = true, WebService = true,
+        Workspace = true, EncoderService = true, EncodingService = true,
+    }
     mt.__index = function(t, k)
         tick()
         local ks = tostring(k)
+        if ks == "Parent" and not setKeys[ks] then
+            return nil
+        end
         if setKeys[ks] then
             return storedValues[ks]
         end
         if ks == "Parent" and destroyedInstances[name] then
             return nil
+        end
+        if mt._className == "DataModel" and knownServiceNames[ks] and serviceCache[ks] then
+            return serviceCache[ks]
+        end
+        if mt._className == "Players" and ks == "LocalPlayer" then
+            if not children[ks] then
+                local player = makeProxy("LocalPlayer")
+                local pmt = getmetatable(player)
+                pmt._className = "Player"
+                pmt._storedValues["ClassName"] = "Player"
+                pmt._setKeys["ClassName"] = true
+                pmt._storedValues["UserId"] = 0
+                pmt._setKeys["UserId"] = true
+                pmt._storedValues["Character"] = nil
+                pmt._setKeys["Character"] = true
+                children[ks] = player
+            end
+            return children[ks]
+        end
+        if mt._className == "Workspace" and ks == "CurrentCamera" then
+            if not children[ks] then
+                local cam = makeProxy("CurrentCamera")
+                local cmt = getmetatable(cam)
+                cmt._className = "Camera"
+                cmt._storedValues["ClassName"] = "Camera"
+                cmt._setKeys["ClassName"] = true
+                children[ks] = cam
+            end
+            return children[ks]
+        end
+        if ks == "ClassName" and mt._className then
+            return mt._className
         end
         if functionProps[ks] then
             if not children[ks] then
@@ -606,12 +776,126 @@ makeProxy = function(name: string): any
             local val = mt._ctorArgs[idx]
             if type(val) == "number" then return val end
         end
-        if name:find("ViewportSize") and (ks == "X" or ks == "Y") then
-            return 100
+        if mt._ctorArgs and (ks == "R" or ks == "G" or ks == "B") and mt._ctorName == "Color3" then
+            local idx = ({ R = 1, G = 2, B = 3 })[ks]
+            local val = mt._ctorArgs[idx]
+            if type(val) == "number" then return val end
         end
-        if mt._ctorName == "Vector3" and (ks == "Magnitude" or ks == "LookVector" or ks == "RightVector" or ks == "UpVector") then
-            if ks == "Magnitude" then return 0 end
+        if mt._ctorName == "Vector3" and ks == "Magnitude" then
+            local x = mt._ctorArgs[1] or 0
+            local y = mt._ctorArgs[2] or 0
+            local z = mt._ctorArgs[3] or 0
+            return math.sqrt(x*x + y*y + z*z)
+        end
+        if mt._ctorName == "Vector2" and ks == "Magnitude" then
+            local x = mt._ctorArgs[1] or 0
+            local y = mt._ctorArgs[2] or 0
+            return math.sqrt(x*x + y*y)
+        end
+        if mt._ctorName == "Vector3" and (ks == "Unit" or ks == "LookVector" or ks == "RightVector" or ks == "UpVector") then
+            local v = makeProxy(name .. "." .. ks)
+            local vmt = getmetatable(v)
+            vmt._ctorName = "Vector3"
+            vmt._ctorArgs = mt._ctorArgs or { 1, 0, 0 }
+            return v
+        end
+        if mt._ctorName == "Vector2" and ks == "Unit" then
+            local v = makeProxy(name .. "." .. ks)
+            local vmt = getmetatable(v)
+            vmt._ctorName = "Vector2"
+            vmt._ctorArgs = mt._ctorArgs or { 1, 0 }
+            return v
+        end
+        if mt._ctorName == "UDim2" and (ks == "X" or ks == "Y") then
+            local idx = ({ X = 1, Y = 2 })[ks]
+            local scale = mt._ctorArgs[idx*2-1] or 0
+            local offset = mt._ctorArgs[idx*2] or 0
             return makeProxy(name .. "." .. ks)
+        end
+        if mt._ctorName == "UDim" and (ks == "Scale" or ks == "Offset") then
+            local idx = ({ Scale = 1, Offset = 2 })[ks]
+            local val = mt._ctorArgs[idx]
+            if type(val) == "number" then return val end
+        end
+        if mt._ctorName == "NumberRange" and (ks == "Min" or ks == "Max") then
+            local idx = ({ Min = 1, Max = 2 })[ks]
+            local val = mt._ctorArgs[idx]
+            if type(val) == "number" then return val end
+            if #mt._ctorArgs == 1 then return mt._ctorArgs[1] end
+            return 0
+        end
+        if (mt._ctorName == "Axes" or mt._ctorName == "Faces") and
+           (ks == "X" or ks == "Y" or ks == "Z" or ks == "Top" or ks == "Bottom" or
+            ks == "Left" or ks == "Right" or ks == "Front" or ks == "Back") then
+            if mt._ctorArgs then
+                for _, arg in ipairs(mt._ctorArgs) do
+                    if isProxy(arg) then
+                        local am = getmetatable(arg)
+                        if am and am._name and am._name:find(ks) then return true end
+                    end
+                end
+            end
+            return false
+        end
+        if mt._ctorName == "Ray" and (ks == "Origin" or ks == "Direction") then
+            local idx = ({ Origin = 1, Direction = 2 })[ks]
+            return mt._ctorArgs[idx] or makeProxy(name .. "." .. ks)
+        end
+        if mt._ctorName == "Rect" and (ks == "Min" or ks == "Max") then
+            local idx = ({ Min = 1, Max = 2 })[ks]
+            return mt._ctorArgs[idx] or makeProxy(name .. "." .. ks)
+        end
+        if mt._ctorName == "Region3" and ks == "Size" then
+            return makeProxy(name .. ".Size")
+        end
+        if mt._ctorName == "PathWaypoint" and (ks == "Position" or ks == "Action") then
+            local idx = ({ Position = 1, Action = 2 })[ks]
+            return mt._ctorArgs[idx] or makeProxy(name .. "." .. ks)
+        end
+        if mt._ctorName == "TweenInfo" and (ks == "Time" or ks == "EasingStyle" or ks == "EasingDirection" or ks == "RepeatCount" or ks == "Reverses" or ks == "DelayTime") then
+            local defaults = { Time = 1, EasingStyle = "Quad", EasingDirection = "In", RepeatCount = 0, Reverses = false, DelayTime = 0 }
+            local val = mt._ctorArgs[({Time=1,EasingStyle=2,EasingDirection=3,RepeatCount=4,Reverses=5,DelayTime=6})[ks]]
+            if val ~= nil then return val end
+            return defaults[ks]
+        end
+        if mt._ctorName == "PhysicalProperties" and (ks == "Friction" or ks == "Elasticity" or ks == "ElasticityWeight" or ks == "FrictionWeight" or ks == "Density") then
+            local idx = ({ Friction = 1, Elasticity = 2, ElasticityWeight = 3, FrictionWeight = 4, Density = 5 })[ks]
+            local val = mt._ctorArgs and mt._ctorArgs[idx]
+            if type(val) == "number" then return val end
+            return 0
+        end
+        if mt._ctorName == "Region3" and ks == "Size" then
+            local v = makeProxy(name .. ".Size")
+            local vmt = getmetatable(v)
+            vmt._ctorName = "Vector3"
+            vmt._ctorArgs = { 0, 0, 0 }
+            return v
+        end
+        if mt._ctorName == "Region3int16" and (ks == "Min" or ks == "Max") then
+            local idx = ({ Min = 1, Max = 2 })[ks]
+            local v = makeProxy(name .. "." .. ks)
+            local vmt = getmetatable(v)
+            vmt._ctorName = "Vector3int16"
+            vmt._ctorArgs = mt._ctorArgs and { mt._ctorArgs[idx*3-2] or 0, mt._ctorArgs[idx*3-1] or 0, mt._ctorArgs[idx*3] or 0 } or { 0, 0, 0 }
+            return v
+        end
+        if (mt._ctorName == "Vector2int16" or mt._ctorName == "Vector3int16") and (ks == "X" or ks == "Y" or ks == "Z") then
+            local idx = ({ X = 1, Y = 2, Z = 3 })[ks]
+            local val = mt._ctorArgs and mt._ctorArgs[idx]
+            if type(val) == "number" then return math.floor(val) end
+            return 0
+        end
+        if mt._ctorName == "FloatCurveKey" and ks == "Time" then
+            local val = mt._ctorArgs[1]
+            if type(val) == "number" then return val end
+        end
+        if mt._ctorName == "RotationCurveKey" and ks == "Time" then
+            local val = mt._ctorArgs[1]
+            if type(val) == "number" then return val end
+        end
+        if mt._ctorName == "ValueCurveKey" and ks == "Time" then
+            local val = mt._ctorArgs[1]
+            if type(val) == "number" then return val end
         end
         if numericProps[ks] then
             return 0
@@ -647,7 +931,8 @@ makeProxy = function(name: string): any
         Memory = true, GpuMemory = true, Cpu = true, OsPlatformId = true,
     }
     local readonlyPropsByClassName = {
-        DataModel = { ["AssemblyLinearVelocity"] = true, ["AssemblyAngularVelocity"] = true, ["AssemblyMass"] = true, ["AssemblyCenterOfMass"] = true },
+        DataModel = { ["AssemblyLinearVelocity"] = true, ["AssemblyAngularVelocity"] = true, ["AssemblyMass"] = true, ["AssemblyCenterOfMass"] = true, ["Parent"] = true },
+        Workspace = { ["Parent"] = true },
         Part = {},
         Sound = { ["PlaybackLoudness"] = true },
     }
@@ -659,10 +944,16 @@ makeProxy = function(name: string): any
         MaxForce = true, Force = true, Torque = true,
         MaxSpeed = true, MaxThrust = true,
     }
+    local readonlyEventProps = {
+        Heartbeat = true, RenderStepped = true, Stepped = true,
+    }
     mt.__newindex = function(t, k, v)
         tick()
         local ks = tostring(k)
         local cls = mt._className or ""
+        if readonlyEventProps[ks] and (cls == "RunService" or cls == "DataModel") then
+            error("attempt to set a read-only property '" .. ks .. "'", 2)
+        end
         local clsReadonly = readonlyPropsByClassName[cls] or {}
         if readonlyProps[ks] or clsReadonly[ks] then
             error("attempt to set a read-only property '" .. ks .. "'", 2)
@@ -672,6 +963,20 @@ makeProxy = function(name: string): any
         end
         storedValues[ks] = v
         setKeys[ks] = true
+        if ks == "Name" and type(v) == "string" then
+            mt._name = v
+        end
+        if ks == "Parent" and v ~= nil and not isProxy(v) then
+            error("attempt to set Parent to a non-Instance value", 2)
+        end
+        if ks == "Parent" and isProxy(v) then
+            local parentName = getmetatable(v)._name
+            local childName = name
+            local childDisplayName = storedValues["Name"] or childName
+            if not parentChildMap[parentName] then parentChildMap[parentName] = {} end
+            parentChildMap[parentName][childDisplayName] = t
+            parentChildMap[parentName][childName] = t
+        end
         if ks == "AssemblyLinearVelocity" and isProxy(v) then
             local velMt = getmetatable(v)
             if velMt and velMt._ctorArgs then
@@ -762,6 +1067,13 @@ makeProxy = function(name: string): any
         if isMethod and fieldName == "GetService" and parent and type(firstArg) == "string" then
             local parentName = proxyName(parent)
             local serviceName = firstArg
+            if serviceName == "Workspace" or serviceName == "workspace" then
+                emit(string.format('local %s = %s:GetService(%s)', serviceName, parentName, serialize(firstArg)))
+                if workspaceProxy then
+                    serviceCache["Workspace"] = workspaceProxy
+                    return workspaceProxy
+                end
+            end
             if serviceName == "DebuggerManager" then
                 emit(string.format('local %s = %s:GetService(%s)', serviceName, parentName, serialize(firstArg)))
                 error("GetService: DebuggerManager not available", 0)
@@ -838,16 +1150,103 @@ makeProxy = function(name: string): any
                         eventName = eventName,
                         callback = callback,
                     })
-                    pcall(callback, makeProxy("eventArgs"))
+                    if eventName == "Heartbeat" or eventName == "Stepped" or eventName == "RenderStepped" then
+                        local baseTime = os.clock()
+                        for i = 1, 10 do
+                            pcall(callback, 0.015, baseTime + i * 0.015)
+                        end
+                    else
+                        pcall(callback, makeProxy("eventArgs"))
+                    end
                 end
             end
             local connProxy = makeProxy(retName)
+            local connMt = getmetatable(connProxy)
+            connMt._className = "RBXScriptConnection"
+            connMt._storedValues["Connected"] = true
+            connMt._setKeys["Connected"] = true
+            connMt._storedValues["ClassName"] = "RBXScriptConnection"
+            connMt._setKeys["ClassName"] = true
+            emit(string.format('local %s = %s(%s)', retName, callExpr, serialize(firstArg)))
+            return connProxy
+        end
+
+        if isMethod and (fieldName == "Once") and parent then
+            local callback = firstArg
+            if type(callback) == "function" then
+                pcall(callback, makeProxy("eventArgs"))
+            end
+            local connProxy = makeProxy(retName)
+            local connMt = getmetatable(connProxy)
+            connMt._className = "RBXScriptConnection"
+            connMt._storedValues["Connected"] = true
+            connMt._setKeys["Connected"] = true
             emit(string.format('local %s = %s(%s)', retName, callExpr, serialize(firstArg)))
             return connProxy
         end
 
         if isMethod and (fieldName == "Disconnect" or fieldName == "disconnect") then
-            emit(string.format('%s:Disconnect()', callExpr))
+            if parent then
+                local connMt = getmetatable(parent)
+                if connMt and connMt._storedValues then
+                    connMt._storedValues["Connected"] = false
+                    connMt._setKeys["Connected"] = true
+                end
+            end
+            emit(string.format('%s()', callExpr))
+            return makeProxy(retName)
+        end
+
+        if isMethod and fieldName == "SetAttribute" and parent then
+            local parentName = proxyName(parent)
+            emit(string.format('%s:SetAttribute(%s)', parentName, table.concat(parts, ", ")))
+            local parentMt = getmetatable(parent)
+            if not parentMt._attributes then parentMt._attributes = {} end
+            parentMt._attributes[firstArg] = args[startIdx + 1]
+            return makeProxy(retName)
+        end
+
+        if isMethod and fieldName == "GetAttribute" and parent then
+            local parentName = proxyName(parent)
+            emit(string.format('local %s = %s:GetAttribute(%s)', retName, parentName, serialize(firstArg)))
+            local parentMt = getmetatable(parent)
+            if parentMt._attributes then return parentMt._attributes[firstArg] end
+            return nil
+        end
+
+        if isMethod and fieldName == "GetAttributes" and parent then
+            local parentName = proxyName(parent)
+            emit(string.format('local %s = %s:GetAttributes()', retName, parentName))
+            local parentMt = getmetatable(parent)
+            return parentMt._attributes or {}
+        end
+
+        if isMethod and fieldName == "Fire" and parent then
+            local parentName = proxyName(parent)
+            emit(string.format('%s:Fire(%s)', parentName, table.concat(parts, ", ")))
+            for _, conn in ipairs(eventConnections) do
+                if rawequal(conn.proxy, parent) and conn.eventName == "Event" then
+                    pcall(conn.callback, table.unpack(args, startIdx, n))
+                end
+            end
+            return makeProxy(retName)
+        end
+
+        if isMethod and fieldName == "FireServer" and parent then
+            local parentName = proxyName(parent)
+            emit(string.format('%s:FireServer(%s)', parentName, table.concat(parts, ", ")))
+            return makeProxy(retName)
+        end
+
+        if isMethod and fieldName == "FireClient" and parent then
+            local parentName = proxyName(parent)
+            emit(string.format('%s:FireClient(%s)', parentName, table.concat(parts, ", ")))
+            return makeProxy(retName)
+        end
+
+        if isMethod and (fieldName == "FireAllClients") and parent then
+            local parentName = proxyName(parent)
+            emit(string.format('%s:FireAllClients(%s)', parentName, table.concat(parts, ", ")))
             return makeProxy(retName)
         end
 
@@ -862,7 +1261,7 @@ makeProxy = function(name: string): any
         end
 
         if isMethod and fieldName == "Wait" then
-            emit(string.format('local %s = %s:Wait()', retName, callExpr))
+            emit(string.format('local %s = %s()', retName, callExpr))
             return makeProxy(retName)
         end
 
@@ -893,11 +1292,22 @@ makeProxy = function(name: string): any
 
         if isMethod and (fieldName == "Destroy" or fieldName == "Remove") and parent then
             local parentName = proxyName(parent)
+            local parentMt = getmetatable(parent)
+            local parentClassName = parentMt and parentMt._className or ""
+            if parentClassName == "DataModel" or parentClassName == "Workspace" then
+                emit(string.format('%s:%s()', parentName, fieldName))
+                error("Cannot destroy " .. parentClassName, 0)
+            end
+            if parentMt and parentMt._className and knownServiceNames[parentMt._className] then
+                emit(string.format('%s:%s()', parentName, fieldName))
+                error("Cannot destroy service " .. parentMt._className, 0)
+            end
             emit(string.format('%s:%s()', parentName, fieldName))
             destroyedInstances[parentName] = true
             local pm = getmetatable(parent)
             if pm and pm._storedValues then
                 pm._storedValues["Parent"] = nil
+                pm._setKeys["Parent"] = true
             end
             return makeProxy(retName)
         end
@@ -909,6 +1319,22 @@ makeProxy = function(name: string): any
                 emit(string.format('%s:Clone()', proxyName(parent)))
                 error("Ugc cannot be cloned", 0)
             end
+            if parentMt and parentMt._storedValues and parentMt._storedValues["Archivable"] == false then
+                emit(string.format('%s:Clone()', proxyName(parent)))
+                return nil
+            end
+            local v = genVar("clone")
+            emit(string.format('local %s = %s:Clone()', v, proxyName(parent)))
+            local cloneProxy = makeProxy(v)
+            local cloneMt = getmetatable(cloneProxy)
+            cloneMt._className = parentClassName
+            if parentMt and parentMt._storedValues then
+                for k, val in pairs(parentMt._storedValues) do
+                    cloneMt._storedValues[k] = val
+                    cloneMt._setKeys[k] = true
+                end
+            end
+            return cloneProxy
         end
 
         if isMethod and fieldName == "Create" and parent then
@@ -933,7 +1359,30 @@ makeProxy = function(name: string): any
                     end
                 end
             end
-            return makeProxy(retName)
+            local tweenProxy = makeProxy(retName)
+            local tweenMt = getmetatable(tweenProxy)
+            tweenMt._className = "Tween"
+            tweenMt._storedValues["ClassName"] = "Tween"
+            tweenMt._setKeys["ClassName"] = true
+            return tweenProxy
+        end
+
+        if isMethod and (fieldName == "FindFirstChild" or fieldName == "findFirstChild") and parent then
+            local parentName = proxyName(parent)
+            emit(string.format('local %s = %s:FindFirstChild(%s)', retName, parentName, table.concat(parts, ", ")))
+            if type(firstArg) == "string" then
+                local children = parentChildMap[parentName]
+                if children and children[firstArg] then
+                    return children[firstArg]
+                end
+            end
+            return nil
+        end
+
+        if isMethod and (fieldName == "FindFirstDescendant" or fieldName == "FindFirstChildWhichIsA" or fieldName == "FindFirstChildOfClass") and parent then
+            local parentName = proxyName(parent)
+            emit(string.format('local %s = %s:%s(%s)', retName, parentName, fieldName, table.concat(parts, ", ")))
+            return nil
         end
 
         if isMethod and (fieldName == "IsServer" or fieldName == "IsClient" or fieldName == "IsStudio") then
@@ -977,7 +1426,9 @@ makeProxy = function(name: string): any
             if select("#", ...) - startIdx + 1 > 2 then
                 error("GetProductInfo: too many arguments", 0)
             end
-            return { AssetId = id, Name = "Asset", Description = "", Creator = { Id = 0, Name = "Creator" } }
+            return { AssetId = id, Name = "Asset", Description = "", AssetTypeId = 1,
+                     Creator = { Id = 0, Name = "Creator", CreatorType = "User" },
+                     IsForSale = false, PriceInRobux = 0, ContentRatingTypeId = 0 }
         end
 
         if isMethod and fieldName == "GetCountryRegionForPlayerAsync" and parent then
@@ -1046,6 +1497,94 @@ makeProxy = function(name: string): any
                 TextSource = { UserId = 0 },
             })
             return makeProxy(retName)
+        end
+
+        if isMethod and fieldName == "NextInteger" and parent then
+            local parentName = proxyName(parent)
+            emit(string.format('local %s = %s:NextInteger(%s)', retName, parentName, table.concat(parts, ", ")))
+            local min = args[startIdx] or 0
+            local max = args[startIdx + 1] or 100
+            return math.random(min, max)
+        end
+
+        if isMethod and fieldName == "NextNumber" and parent then
+            local parentName = proxyName(parent)
+            emit(string.format('local %s = %s:NextNumber(%s)', retName, parentName, table.concat(parts, ", ")))
+            return math.random()
+        end
+
+        if isMethod and (fieldName == "GetSecret" or fieldName == "getSecret") and parent then
+            local parentName = proxyName(parent)
+            emit(string.format('local %s = %s:GetSecret(%s)', retName, parentName, serialize(firstArg)))
+            local secret = makeProxy(retName)
+            local sMt = getmetatable(secret)
+            sMt._className = "Secret"
+            return secret
+        end
+
+        if isMethod and fieldName == "GetAllBoundActionInfo" and parent then
+            local parentName = proxyName(parent)
+            emit(string.format('local %s = %s:GetAllBoundActionInfo()', retName, parentName))
+            return {}
+        end
+
+        if isMethod and (fieldName == "CompressBuffer" or fieldName == "DecompressBuffer") and parent then
+            local parentName = proxyName(parent)
+            emit(string.format('local %s = %s:%s(%s)', retName, parentName, fieldName, table.concat(parts, ", ")))
+            return { _data = "compressed", _size = 6 }
+        end
+
+        if isMethod and fieldName == "WorldToScreenPoint" and parent then
+            local parentName = proxyName(parent)
+            emit(string.format('local %s = %s:WorldToScreenPoint(%s)', retName, parentName, table.concat(parts, ", ")))
+            local v = makeProxy(retName)
+            local vMt = getmetatable(v)
+            vMt._ctorName = "Vector3"
+            vMt._ctorArgs = { 0, 0, 0 }
+            return v
+        end
+
+        if isMethod and fieldName == "Raycast" and parent then
+            local parentName = proxyName(parent)
+            emit(string.format('local %s = %s:Raycast(%s)', retName, parentName, table.concat(parts, ", ")))
+            return nil
+        end
+
+        if isMethod and fieldName == "GetMouseLocation" and parent then
+            local parentName = proxyName(parent)
+            emit(string.format('local %s = %s:GetMouseLocation()', retName, parentName))
+            local v = makeProxy(retName)
+            local vMt = getmetatable(v)
+            vMt._ctorName = "Vector2"
+            vMt._ctorArgs = { 0, 0 }
+            return v
+        end
+
+        if isMethod and fieldName == "GetMouse" and parent then
+            local parentName = proxyName(parent)
+            emit(string.format('local %s = %s:GetMouse()', retName, parentName))
+            local mouse = makeProxy(retName)
+            local mMt = getmetatable(mouse)
+            mMt._className = "PlayerMouse"
+            mMt._storedValues["ClassName"] = "PlayerMouse"
+            mMt._setKeys["ClassName"] = true
+            return mouse
+        end
+
+        if isMethod and fieldName == "ClosestPoint" and parent then
+            local parentName = proxyName(parent)
+            emit(string.format('local %s = %s:ClosestPoint(%s)', retName, parentName, table.concat(parts, ", ")))
+            local v = makeProxy(retName)
+            local vMt = getmetatable(v)
+            vMt._ctorName = "Vector3"
+            vMt._ctorArgs = { 0, 0, 0 }
+            return v
+        end
+
+        if isMethod and (fieldName == "GetPartsInPart" or fieldName == "GetPartsInBox" or fieldName == "GetPartBoundsInBox" or fieldName == "GetPartBoundsInRadius") and parent then
+            local parentName = proxyName(parent)
+            emit(string.format('local %s = %s:%s(%s)', retName, parentName, fieldName, table.concat(parts, ", ")))
+            return {}
         end
 
         if isMethod and fieldName == "IsA" and parent then
@@ -1125,10 +1664,33 @@ makeProxy = function(name: string): any
         emit(string.format('local %s = %s .. %s', retName, sa, sb))
         return makeProxy(retName)
     end
+    local function makeVector3FromArgs(x, y, z)
+        local retName = genVar("v")
+        emit(string.format('local %s = Vector3.new(%s, %s, %s)', retName, serialize(x), serialize(y), serialize(z)))
+        local proxy = makeProxy(retName)
+        local pmt = getmetatable(proxy)
+        pmt._ctorName = "Vector3"
+        pmt._ctorArgs = { x, y, z }
+        return proxy
+    end
+    local function getVector3Args(v)
+        if isProxy(v) then
+            local m = getmetatable(v)
+            if m and m._ctorName == "Vector3" and m._ctorArgs then
+                return m._ctorArgs[1] or 0, m._ctorArgs[2] or 0, m._ctorArgs[3] or 0
+            end
+        end
+        return nil
+    end
     mt.__add = function(a, b)
         local sa = isProxy(a) and proxyName(a) or serialize(a)
         local sb = isProxy(b) and proxyName(b) or serialize(b)
         markUsed(a); markUsed(b)
+        local ax, ay, az = getVector3Args(a)
+        local bx, by, bz = getVector3Args(b)
+        if ax and bx then
+            return makeVector3FromArgs(ax + bx, ay + by, az + bz)
+        end
         local retName = genVar("v")
         emit(string.format('local %s = %s + %s', retName, sa, sb))
         return makeProxy(retName)
@@ -1137,6 +1699,11 @@ makeProxy = function(name: string): any
         local sa = isProxy(a) and proxyName(a) or serialize(a)
         local sb = isProxy(b) and proxyName(b) or serialize(b)
         markUsed(a); markUsed(b)
+        local ax, ay, az = getVector3Args(a)
+        local bx, by, bz = getVector3Args(b)
+        if ax and bx then
+            return makeVector3FromArgs(ax - bx, ay - by, az - bz)
+        end
         local retName = genVar("v")
         emit(string.format('local %s = %s - %s', retName, sa, sb))
         return makeProxy(retName)
@@ -1145,6 +1712,17 @@ makeProxy = function(name: string): any
         local sa = isProxy(a) and proxyName(a) or serialize(a)
         local sb = isProxy(b) and proxyName(b) or serialize(b)
         markUsed(a); markUsed(b)
+        local ax, ay, az = getVector3Args(a)
+        local bx, by, bz = getVector3Args(b)
+        if ax and bx then
+            return makeVector3FromArgs(ax * bx, ay * by, az * bz)
+        end
+        if ax and type(b) == "number" then
+            return makeVector3FromArgs(ax * b, ay * b, az * b)
+        end
+        if type(a) == "number" and bx then
+            return makeVector3FromArgs(a * bx, a * by, a * bz)
+        end
         local retName = genVar("v")
         emit(string.format('local %s = %s * %s', retName, sa, sb))
         return makeProxy(retName)
@@ -1153,6 +1731,14 @@ makeProxy = function(name: string): any
         local sa = isProxy(a) and proxyName(a) or serialize(a)
         local sb = isProxy(b) and proxyName(b) or serialize(b)
         markUsed(a); markUsed(b)
+        local ax, ay, az = getVector3Args(a)
+        local bx, by, bz = getVector3Args(b)
+        if ax and bx then
+            return makeVector3FromArgs(ax / bx, ay / by, az / bz)
+        end
+        if ax and type(b) == "number" then
+            return makeVector3FromArgs(ax / b, ay / b, az / b)
+        end
         local retName = genVar("v")
         emit(string.format('local %s = %s / %s', retName, sa, sb))
         return makeProxy(retName)
@@ -1209,10 +1795,48 @@ local function spyInstance(className: string, name: string?, silent: boolean?): 
 end
 
 local env
+local _realDebug = debug
+local _realDebugInfo = _realDebug and _realDebug.info or nil
+local _realDebugTraceback = _realDebug and _realDebug.traceback or nil
+local knownCFunctions = {}
+local function registerCFunctions(lib)
+    if type(lib) == "table" then
+        for k, v in pairs(lib) do
+            if type(v) == "function" then knownCFunctions[v] = true end
+        end
+    end
+end
+registerCFunctions(math)
+registerCFunctions(string)
+registerCFunctions(table)
+registerCFunctions(coroutine)
+registerCFunctions(os)
+registerCFunctions(bit32)
+registerCFunctions(utf8)
+knownCFunctions[print] = true
+knownCFunctions[pcall] = true
+knownCFunctions[xpcall] = true
+knownCFunctions[error] = true
+knownCFunctions[assert] = true
+knownCFunctions[tonumber] = true
+knownCFunctions[tostring] = true
+knownCFunctions[type] = true
+knownCFunctions[select] = true
+knownCFunctions[pairs] = true
+knownCFunctions[ipairs] = true
+knownCFunctions[next] = true
+knownCFunctions[rawget] = true
+knownCFunctions[rawset] = true
+knownCFunctions[rawequal] = true
+knownCFunctions[rawlen] = true
+knownCFunctions[setmetatable] = true
+knownCFunctions[getmetatable] = true
+knownCFunctions[unpack] = true
 local function createEnv()
     env = {}
     env._G = {}
     env._ENV = env
+    local cclosureSet = setmetatable({}, { __mode = "k" })
     local function copyLib(lib, extra)
         local c = {}
         for k, v in pairs(lib) do c[k] = v end
@@ -1226,16 +1850,41 @@ local function createEnv()
         })
     end
     env.math = copyLib(math, {
-        abs = function(x) if type(x) ~= "number" then return 0 end return math.abs(x) end,
-        floor = function(x) if type(x) ~= "number" then return 0 end return math.floor(x) end,
-        ceil = function(x) if type(x) ~= "number" then return 0 end return math.ceil(x) end,
-        sqrt = function(x) if type(x) ~= "number" then return 0 end return math.sqrt(x) end,
-        sin = function(x) if type(x) ~= "number" then return 0 end return math.sin(x) end,
-        cos = function(x) if type(x) ~= "number" then return 0 end return math.cos(x) end,
-        tan = function(x) if type(x) ~= "number" then return 0 end return math.tan(x) end,
+        abs = function(x) if type(x) == "string" or type(x) == "boolean" or x == nil then error("bad argument #1 to 'abs' (number expected)", 2) end if type(x) ~= "number" then return 0 end return math.abs(x) end,
+        floor = function(x) if type(x) == "string" or type(x) == "boolean" or x == nil then error("bad argument #1 to 'floor' (number expected)", 2) end if type(x) ~= "number" then return 0 end return math.floor(x) end,
+        ceil = function(x) if type(x) == "string" or type(x) == "boolean" or x == nil then error("bad argument #1 to 'ceil' (number expected)", 2) end if type(x) ~= "number" then return 0 end return math.ceil(x) end,
+        sqrt = function(x) if type(x) == "string" or type(x) == "boolean" or x == nil then error("bad argument #1 to 'sqrt' (number expected)", 2) end if type(x) ~= "number" then return 0 end return math.sqrt(x) end,
+        sin = function(x) if type(x) == "string" or type(x) == "boolean" or x == nil then error("bad argument #1 to 'sin' (number expected)", 2) end if type(x) ~= "number" then return 0 end return math.sin(x) end,
+        cos = function(x) if type(x) == "string" or type(x) == "boolean" or x == nil then error("bad argument #1 to 'cos' (number expected)", 2) end if type(x) ~= "number" then return 0 end return math.cos(x) end,
+        tan = function(x) if type(x) == "string" or type(x) == "boolean" or x == nil then error("bad argument #1 to 'tan' (number expected)", 2) end if type(x) ~= "number" then return 0 end return math.tan(x) end,
         random = function(a, b) if a and b then return math.random(a, b) elseif a then return math.random(a) else return math.random() end end,
+        clamp = function(x, min, max) if type(x) ~= "number" then return 0 end return math.clamp(x, min, max) end,
+        sign = function(x) if type(x) ~= "number" then return 0 end return math.sign(x) end,
+        round = function(x) if type(x) ~= "number" then return 0 end return math.round(x) end,
+        fmod = function(x, y) if type(x) ~= "number" or type(y) ~= "number" then return 0 end return math.fmod(x, y) end,
+        pow = function(x, y) if type(x) ~= "number" or type(y) ~= "number" then return 0 end return math.pow(x, y) end,
+        exp = function(x) if type(x) ~= "number" then return 0 end return math.exp(x) end,
+        log = function(x, base) if type(x) ~= "number" then return 0 end if base then return math.log(x, base) end return math.log(x) end,
+        asin = function(x) if type(x) ~= "number" then return 0 end return math.asin(x) end,
+        acos = function(x) if type(x) ~= "number" then return 0 end return math.acos(x) end,
+        atan = function(x, y) if type(x) ~= "number" then return 0 end if y then return math.atan(x, y) end return math.atan(x) end,
+        atan2 = function(x, y) if type(x) ~= "number" or type(y) ~= "number" then return 0 end return math.atan2(x, y) end,
+        huge = math.huge, pi = math.pi, maxinteger = math.maxinteger, mininteger = math.mininteger,
+        noise = function(x, y, z) return 0 end,
+        randomseed = function(seed) math.randomseed(seed) end,
     })
+    registerCFunctions(env.math)
+    -- Explicitly register custom math functions as C closures
+    for _, v in pairs(env.math) do
+        if type(v) == "function" then knownCFunctions[v] = true end
+    end
+    knownCFunctions[env.math.clamp] = true
+    knownCFunctions[env.math.sign] = true
+    knownCFunctions[env.math.round] = true
+    knownCFunctions[env.math.noise] = true
+    knownCFunctions[env.math.randomseed] = true
     env.string = copyLib(string)
+    registerCFunctions(env.string)
     env.table = copyLib(table, {
         isfrozen = function() return true end,
         freeze = function(t) return t end,
@@ -1245,45 +1894,80 @@ local function createEnv()
     env.coroutine = copyLib(coroutine)
     local clockVal = 0
     env.os = copyLib(os, {
-        clock = function() clockVal += 0.1; return clockVal end,
+        clock = function() clockVal += 0.016; return clockVal end,
+        time = function() return os.time() end,
+        date = function(fmt, t) return os.date(fmt, t) end,
+        difftime = function(t2, t1) return t2 - t1 end,
         exit = function() emit("-- os.exit() called") end,
         halt = function() emit("-- os.halt() called") end,
     })
     env.debug = setmetatable({
         info = function(level, what)
             if type(level) == "function" then
-                if what and what:find("f") then return level end
-                if what and what:find("s") then return "=[C]" end
-                if what and what:find("l") then return -1 end
-                if what and what:find("n") then return "" end
-                if what and what:find("a") then return 0, false end
-                return { what = "C", name = "", source = "=[C]", currentline = -1,
-                         nups = 0, nparams = 0, is_vararg = false }
+                local isC = knownCFunctions[level] or cclosureSet[level] or false
+                if not what or what == "" then
+                    return { what = isC and "C" or "Lua", name = "", source = isC and "[C]" or "envlog", currentline = -1,
+                             nups = 0, nparams = 0, is_vararg = false }
+                end
+                local result = {}
+                for char in tostring(what):gmatch(".") do
+                    if char == "f" then result[#result+1] = level
+                    elseif char == "s" then result[#result+1] = isC and "[C]" or "envlog"
+                    elseif char == "l" then result[#result+1] = -1
+                    elseif char == "n" then result[#result+1] = ""
+                    elseif char == "a" then result[#result+1] = 0; result[#result+2] = false
+                    elseif char == "w" then result[#result+1] = isC and "C" or "Lua"
+                    end
+                end
+                return table.unpack(result)
             end
             if type(level) == "number" then
                 if level > 10 then
-                    if what and what:find("f") then return nil end
-                    if what and what:find("s") then return nil end
-                    if what and what:find("l") then return -1 end
-                    if what and what:find("n") then return nil end
-                    if what and what:find("a") then return 0, false end
+                    if not what or what == "" then return nil end
                     return nil
                 end
-                if what and what:find("f") then return function() end end
-                if what and what:find("s") then return "envlog" end
-                if what and what:find("l") then return 1 end
-                if what and what:find("n") then return "" end
-                if what and what:find("a") then return 0, false end
-                return { what = "Lua", name = "", source = "envlog", currentline = level,
-                         nups = 0, nparams = 0, is_vararg = false }
+                if not what or what == "" then
+                    return { what = "Lua", name = "", source = "envlog", currentline = level,
+                             nups = 0, nparams = 0, is_vararg = false }
+                end
+                local result = {}
+                for char in tostring(what):gmatch(".") do
+                    if char == "f" then result[#result+1] = function() end
+                    elseif char == "s" then result[#result+1] = "envlog"
+                    elseif char == "l" then result[#result+1] = level
+                    elseif char == "n" then result[#result+1] = ""
+                    elseif char == "a" then result[#result+1] = 0; result[#result+2] = false
+                    elseif char == "w" then result[#result+1] = "Lua"
+                    end
+                end
+                return table.unpack(result)
             end
-            if what and what:find("f") then return function() end end
-            return nil
+            if not what or what == "" then return nil end
+            local result = {}
+            for char in tostring(what):gmatch(".") do
+                if char == "f" then result[#result+1] = function() end
+                elseif char == "s" then result[#result+1] = "envlog"
+                elseif char == "l" then result[#result+1] = 1
+                elseif char == "n" then result[#result+1] = ""
+                elseif char == "a" then result[#result+1] = 0; result[#result+2] = false
+                elseif char == "w" then result[#result+1] = "Lua"
+                end
+            end
+            return table.unpack(result)
         end,
-        traceback = debug and debug.traceback or function(msg) return tostring(msg) end,
+        traceback = realDebugTraceback or function(msg) return tostring(msg) end,
         gethook = function() return nil end,
         getinfo = function(f, what)
             if type(f) == "number" and f > 10 then return nil end
+            if type(f) == "function" then
+                local isC = knownCFunctions[f] or cclosureSet[f] or false
+                if not isC then
+                    local dw = env.debug.info(f, "w")
+                    isC = (dw == "C")
+                end
+                return { what = isC and "C" or "Lua", name = "", source = isC and "=[C]" or "envlog", currentline = -1,
+                         nups = 0, nparams = 0, is_vararg = false }
+            end
             return { what = "C", name = "", source = "=[C]", currentline = -1,
                      nups = 0, nparams = 0, is_vararg = false }
         end,
@@ -1298,28 +1982,21 @@ local function createEnv()
     }, { __index = function(_, k) return function() return nil end end })
     env.io = nil
     local function wrapPcall(f, ...)
-        local ok, result = pcall(f, ...)
-        if not ok and type(result) == "string" and result:find("stack", 1, true) then
-            return false, "stack overflow"
+        local results = table.pack(pcall(f, ...))
+        local ok = results[1]
+        if not ok and type(results[2]) == "string" and results[2]:find("stack", 1, true) then
+            results[2] = "stack overflow"
         end
-        if not ok then
-            return false, tostring(result)
-        end
-        return true, result
+        return table.unpack(results, 1, results.n)
     end
     env.pcall = function(f, ...) return wrapPcall(f, ...) end
     env.xpcall = function(f, handler, ...)
-        local ok, err = pcall(f, ...)
-        if not ok and type(handler) == "function" then
-            pcall(handler, err)
+        local results = table.pack(xpcall(f, handler, ...))
+        local ok = results[1]
+        if not ok and type(results[2]) == "string" and results[2]:find("stack", 1, true) then
+            results[2] = "stack overflow"
         end
-        if not ok then
-            if type(err) == "string" and err:find("stack", 1, true) then
-                return false, "stack overflow"
-            end
-            return false, tostring(err)
-        end
-        return true, err
+        return table.unpack(results, 1, results.n)
     end
     env.error = error; env.assert = assert
     env.tonumber = tonumber; local tostringCounter = 0
@@ -1343,6 +2020,12 @@ local function createEnv()
         if type(t) == "string" then return nil end
         local m = getmetatable(t)
         if m and m.__metatable ~= nil then return m.__metatable end
+        if m and m._isProxy then
+            local cls = m._className or ""
+            if cls == "DataModel" or cls == "Workspace" or cls == "Instance" then
+                return "The metatable is locked"
+            end
+        end
         return m
     end
     env.ipairs = function(t, ...)
@@ -1382,6 +2065,7 @@ local function createEnv()
         if t == "table" then
             local m = getmetatable(x)
             if m and m._isProxy then
+                if m._ctorName then return m._ctorName end
                 local fieldName = m._fieldName
                 if fieldName and propertyTypes[fieldName] then
                     return propertyTypes[fieldName]
@@ -1389,8 +2073,16 @@ local function createEnv()
                 if m._signalForEvent or m._signalForProperty then
                     return "RBXScriptSignal"
                 end
+                local cls = m._className
+                if cls == "RBXScriptConnection" then return cls end
+                if cls == "DateTime" then return "DateTime" end
+                if cls == "EnumItem" then return "EnumItem" end
+                if cls == "Enum" then return "Enum" end
+                if cls == "Secret" then return "Secret" end
+                if cls == "PlayerMouse" then return "PlayerMouse" end
                 return "Instance"
             end
+            if m and m._isEnumType then return "Enum" end
         end
         return t
     end
@@ -1438,7 +2130,7 @@ local function createEnv()
                 if m._fieldName and functionTypeNames[m._fieldName] then
                     return "function"
                 end
-                return "table"
+                return "userdata"
             end
         end
         return t
@@ -1460,30 +2152,229 @@ local function createEnv()
     env.setfenv = function(f, env)
         error("setfenv: cannot change environment of given object", 2)
     end
+    env.ypcall = env.pcall
+    env.settings = function()
+        local s = makeProxy("GlobalSettings")
+        local mt = getmetatable(s)
+        mt._className = "GlobalSettings"
+        mt._storedValues["ClassName"] = "GlobalSettings"
+        mt._setKeys["ClassName"] = true
+        return s
+    end
+    env.GetMemory = function() return 0 end
+    env.GetGPUStats = function() return {} end
+    env.GetPlatform = function() return "Windows" end
+    env.buffer = {
+        create = function(size) return { _size = size, _data = {} } end,
+        readi8 = function(buf, offset) return 0 end,
+        readu8 = function(buf, offset) return 0 end,
+        readi16 = function(buf, offset) return 0 end,
+        readu16 = function(buf, offset) return 0 end,
+        readi32 = function(buf, offset) return 0 end,
+        readu32 = function(buf, offset) return 0 end,
+        readf32 = function(buf, offset) return 0 end,
+        readf64 = function(buf, offset) return 0 end,
+        writei8 = function(buf, offset, val) end,
+        writeu8 = function(buf, offset, val) end,
+        writei16 = function(buf, offset, val) end,
+        writeu16 = function(buf, offset, val) end,
+        writei32 = function(buf, offset, val) end,
+        writeu32 = function(buf, offset, val) if offset and offset > 100000 then error("buffer overflow", 0) end end,
+        writef32 = function(buf, offset, val) end,
+        writef64 = function(buf, offset, val) end,
+        readstring = function(buf, offset, count) return string.rep("l", count or 0) end,
+        writestring = function(buf, offset, str) end,
+        len = function(buf) return type(buf) == "table" and buf._size or 0 end,
+        copy = function(dst, dstOffset, src, srcOffset, count) end,
+        fill = function(buf, offset, val, count) end,
+        tobits = function(buf) return {} end,
+        frombits = function(bits) return { _size = 0, _data = {} } end,
+    }
     env.getfenv = function(level)
         if type(level) == "number" and level > 100 then return nil end
         return env
     end
     env.version = function() return "0.0.0" end
     env._VERSION = "Luau"
-    env.loadstring = makeProxy("loadstring")
+    env.loadstring = function(source)
+        if type(source) ~= "string" then
+            return nil, "loadstring: argument must be a string"
+        end
+        local ok, fn = pcall(function()
+            local compiled = luau.compile(source, { optimizationLevel = 1 })
+            return luau.load(compiled, { debugName = "loadstring", environment = env })
+        end)
+        if not ok or not fn then
+            return nil, tostring(fn):sub(1, 200)
+        end
+        return fn
+    end
     env.load = env.loadstring
 
     env.game = spyInstance("DataModel", "game", true)
     env.Game = env.game
+    local gameMt = getmetatable(env.game)
+    gameMt._storedValues["PlaceId"] = 1234567890
+    gameMt._setKeys["PlaceId"] = true
+    gameMt._storedValues["JobId"] = "job-id-12345"
+    gameMt._setKeys["JobId"] = true
+    gameMt._storedValues["GameId"] = 9876543210
+    gameMt._setKeys["GameId"] = true
+    gameMt._storedValues["CreatorId"] = 123456
+    gameMt._setKeys["CreatorId"] = true
     env.workspace = spyInstance("Workspace", "workspace", true)
     env.Workspace = env.workspace
+    workspaceProxy = env.workspace
+    local wsMt = getmetatable(env.workspace)
+    wsMt._storedValues["Parent"] = env.game
+    wsMt._setKeys["Parent"] = true
+    local baseplate = makeProxy("Baseplate")
+    local bpMt = getmetatable(baseplate)
+    bpMt._className = "Part"
+    bpMt._storedValues["Name"] = "Baseplate"
+    bpMt._setKeys["Name"] = true
+    bpMt._storedValues["ClassName"] = "Part"
+    bpMt._setKeys["ClassName"] = true
+    bpMt._storedValues["Parent"] = env.workspace
+    bpMt._setKeys["Parent"] = true
+    if not parentChildMap["workspace"] then parentChildMap["workspace"] = {} end
+    parentChildMap["workspace"]["Baseplate"] = baseplate
+    local terrain = makeProxy("Terrain")
+    local terrainMt = getmetatable(terrain)
+    terrainMt._className = "Terrain"
+    terrainMt._storedValues["ClassName"] = "Terrain"
+    terrainMt._setKeys["ClassName"] = true
+    terrainMt._storedValues["Parent"] = env.workspace
+    terrainMt._setKeys["Parent"] = true
+    parentChildMap["workspace"]["Terrain"] = terrain
     env.script = spyInstance("LocalScript", "script", true)
 
     env.Instance = setmetatable({
         new = function(c)
             local cls = tostring(c or "Instance")
+            local knownClasses = {
+                Part = true, Model = true, Frame = true, TextLabel = true,
+                TextButton = true, ImageButton = true, ImageLabel = true,
+                TextBox = true, ScrollBar = true, ScrollingFrame = true,
+                ScreenGui = true, BillboardGui = true, SurfaceGui = true,
+                Folder = true, LocalScript = true, Script = true, ModuleScript = true,
+                Sound = true, SoundGroup = true, Animation = true, AnimationController = true,
+                Humanoid = true, HumanoidDescription = true,
+                Weld = true, WeldConstraint = true, Motor6D = true,
+                RemoteEvent = true, RemoteFunction = true, BindableEvent = true, BindableFunction = true,
+                ValueBase = true, IntValue = true, NumberValue = true, StringValue = true,
+                BoolValue = true, ObjectValue = true, CFrameValue = true,
+                Vector3Value = true, Color3Value = true, BrickColorValue = true,
+                RayValue = true, BinaryStringValue = true,
+                Camera = true, Workspace = true, Lighting = true,
+                Player = true, Players = true, StarterGui = true, StarterPack = true,
+                StarterPlayer = true, StarterPlayerScripts = true, StarterCharacterScripts = true,
+                ReplicatedStorage = true, ServerStorage = true, ServerScriptService = true,
+                ReplicatedFirst = true, RunService = true, TweenService = true,
+                UserInputService = true, ContextActionService = true,
+                HttpService = true, MarketplaceService = true, SoundService = true,
+                TextService = true, GuiService = true,
+                CollectionService = true, MemStorageService = true,
+                LocalizationService = true, LocalizationTable = true,
+                PhysicsService = true, HapticService = true, AdService = true,
+                DataStoreService = true, AchievementService = true,
+                AnimationClipProvider = true, AvatarEditorService = true,
+                BadgeService = true, Chat = true, ContentProvider = true,
+                CoreGui = true, Debris = true, GamePassService = true, GroupService = true,
+                LogService = true, NotificationService = true, PathfindingService = true,
+                PointsService = true, SelectionService = true,
+                SocialService = true, Stats = true, Teams = true,
+                TeleportService = true, TextChatService = true,
+                VirtualInputManager = true, VirtualUser = true,
+                VoiceChatService = true, AnalyticsService = true,
+                ProximityPrompt = true, ProximityPromptService = true,
+                ClickDetector = true, Constraint = true,
+                ForceField = true, Sparkles = true, Smoke = true, Fire = true,
+                Explosion = true, ParticleEmitter = true, Trail = true,
+                Beam = true, BlockMesh = true, CylinderMesh = true, SpecialMesh = true,
+                Decal = true, Texture = true,
+                Seat = true, VehicleSeat = true,
+                TrussPart = true, CornerWedgePart = true, WedgePart = true,
+                MeshPart = true, UnionOperation = true, NegateOperation = true, BasePart = true,
+                Part = true, SpawnLocation = true,
+                BloomEffect = true, BlurEffect = true, SunRaysEffect = true,
+                DepthOfFieldEffect = true, ColorCorrectionEffect = true,
+                Atmosphere = true, Sky = true,
+                LocalScript = true, Script = true, ModuleScript = true,
+                Frame = true, TextLabel = true, TextButton = true,
+                ImageButton = true, ImageLabel = true, TextBox = true,
+                ScrollingFrame = true, CanvasGroup = true, UIListLayout = true,
+                UIGridLayout = true, UIPageLayout = true, UIPadding = true,
+                UISizeConstraint = true, UIAspectRatioConstraint = true,
+                UIScale = true, UIGradient = true, UICorner = true,
+                UIStroke = true, UIFlexItem = true,
+                ScreenGui = true, BillboardGui = true, SurfaceGui = true,
+                Folder = true, Configuration = true,
+                Weld = true, WeldConstraint = true, Motor6D = true,
+                Snap = true, VelocityMotor = true, Glue = true,
+                Animation = true, AnimationController = true, Animator = true,
+                Humanoid = true, HumanoidDescription = true,
+                Sound = true, SoundGroup = true,
+                RemoteEvent = true, RemoteFunction = true,
+                BindableEvent = true, BindableFunction = true,
+                IntValue = true, NumberValue = true, StringValue = true,
+                BoolValue = true, ObjectValue = true, CFrameValue = true,
+                Vector3Value = true, Color3Value = true, BrickColorValue = true,
+                RayValue = true, BinaryStringValue = true,
+                ClickDetector = true, ProximityPrompt = true,
+                TouchTransmitter = true,
+                ParallelRampartnerServiceMock = true,
+            }
+            if not knownClasses[cls] then
+                local v = genVar("inst")
+                emit(string.format('local %s = Instance.new("%s")', v, cls))
+                local proxy = makeProxy(v)
+                local mt = getmetatable(proxy)
+                mt._className = cls
+                mt._storedValues["ClassName"] = cls
+                mt._setKeys["ClassName"] = true
+                return proxy
+            end
             local v = genVar("inst")
             emit(string.format('local %s = Instance.new("%s")', v, cls))
-            return makeProxy(v)
+            local proxy = makeProxy(v)
+            local mt = getmetatable(proxy)
+            mt._className = cls
+            mt._storedValues["ClassName"] = cls
+            mt._setKeys["ClassName"] = true
+            return proxy
         end,
     }, { __index = function(_, k) return makeProxy("Instance." .. tostring(k)) end })
-    env.Enum = setmetatable({}, { __index = function(_, k) return makeProxy("Enum." .. tostring(k)) end })
+    env.Enum = setmetatable({
+        GetEnumItems = function() return {} end,
+    }, {
+        __index = function(_, k)
+            local enumType = setmetatable({
+                GetEnumItems = function() return {
+                    { Name = "Item1", Value = 0 },
+                    { Name = "Item2", Value = 1 },
+                } end,
+                GetByValue = function() return nil end,
+            }, {
+                __index = function(_, k2)
+                    local item = makeProxy("Enum." .. tostring(k) .. "." .. tostring(k2))
+                    local itemMt = getmetatable(item)
+                    itemMt._className = "EnumItem"
+                    itemMt._ctorName = "EnumItem"
+                    itemMt._storedValues["Name"] = tostring(k2)
+                    itemMt._setKeys["Name"] = true
+                    itemMt._storedValues["Value"] = 0
+                    itemMt._setKeys["Value"] = true
+                    itemMt._storedValues["EnumType"] = tostring(k)
+                    itemMt._setKeys["EnumType"] = true
+                    return item
+                end
+            })
+            local etMt = getmetatable(enumType)
+            etMt._isEnumType = true
+            return enumType
+        end
+    })
     env.Enums = env.Enum
 
     local function newCtor(name)
@@ -1492,6 +2383,11 @@ local function createEnv()
             local parts = {}
             local args = {...}
             for i = 1, select("#", ...) do table.insert(parts, serialize(args[i])) end
+            if name == "NumberRange" and #args == 2 and type(args[1]) == "number" and type(args[2]) == "number" then
+                if args[1] > args[2] then
+                    error("NumberRange: min must be <= max", 0)
+                end
+            end
             emit(string.format('local %s = %s.new(%s)', v, name, table.concat(parts, ", ")))
             local proxy = makeProxy(v)
             local mt = getmetatable(proxy)
@@ -1513,15 +2409,83 @@ local function createEnv()
         end
         return table.concat(parts, ", ")
     end
+    local function colorCtor(ctorName)
+        return function(...)
+            local v = genVar("color")
+            local args = {...}
+            emit(string.format('local %s = Color3.%s(%s)', v, ctorName, argsToList(...)))
+            local proxy = makeProxy(v)
+            local mt = getmetatable(proxy)
+            mt._ctorName = "Color3"
+            mt._ctorArgs = args
+            if ctorName == "fromRGB" then
+                mt._ctorArgs = { (args[1] or 0)/255, (args[2] or 0)/255, (args[3] or 0)/255 }
+            elseif ctorName == "fromHSV" then
+                local h, s, val = args[1] or 0, args[2] or 0, args[3] or 0
+                local r, g, b
+                local i = math.floor(h * 6)
+                local f = h * 6 - i
+                local p = val * (1 - s)
+                local q = val * (1 - f * s)
+                local t = val * (1 - (1 - f) * s)
+                i = i % 6
+                if i == 0 then r, g, b = val, t, p
+                elseif i == 1 then r, g, b = q, val, p
+                elseif i == 2 then r, g, b = p, val, t
+                elseif i == 3 then r, g, b = p, q, val
+                elseif i == 4 then r, g, b = t, p, val
+                elseif i == 5 then r, g, b = val, p, q
+                end
+                mt._ctorArgs = { r or 0, g or 0, b or 0 }
+            end
+            return proxy
+        end
+    end
     env.Color3 = setmetatable({
-        new = function(...) local v = genVar("color"); emit(string.format('local %s = Color3.new(%s)', v, argsToList(...))); return makeProxy(v) end,
-        fromRGB = function(...) local v = genVar("color"); emit(string.format('local %s = Color3.fromRGB(%s)', v, argsToList(...))); return makeProxy(v) end,
-        fromHSV = function(...) local v = genVar("color"); emit(string.format('local %s = Color3.fromHSV(%s)', v, argsToList(...))); return makeProxy(v) end,
+        new = colorCtor("new"),
+        fromRGB = colorCtor("fromRGB"),
+        fromHSV = colorCtor("fromHSV"),
+        fromHex = function(hex)
+            hex = tostring(hex):gsub("#", "")
+            local r = tonumber(hex:sub(1, 2), 16) or 0
+            local g = tonumber(hex:sub(3, 4), 16) or 0
+            local b = tonumber(hex:sub(5, 6), 16) or 0
+            local v = genVar("color")
+            emit(string.format('local %s = Color3.fromHex("%s")', v, hex))
+            local proxy = makeProxy(v)
+            local mt = getmetatable(proxy)
+            mt._ctorName = "Color3"
+            mt._ctorArgs = { r/255, g/255, b/255 }
+            return proxy
+        end,
     }, { __index = function(_, k) return makeProxy("Color3." .. tostring(k)) end })
     env.Rect = newCtor("Rect")
     env.Ray = newCtor("Ray")
     env.Region3 = newCtor("Region3")
+    env.Region3int16 = newCtor("Region3int16")
     env.Random = newCtor("Random")
+    env.Axes = newCtor("Axes")
+    env.Faces = newCtor("Faces")
+    env.PathWaypoint = newCtor("PathWaypoint")
+    env.FloatCurveKey = newCtor("FloatCurveKey")
+    env.RotationCurveKey = newCtor("RotationCurveKey")
+    env.ValueCurveKey = newCtor("ValueCurveKey")
+    env.SecurityCapabilities = newCtor("SecurityCapabilities")
+    env.Vector2int16 = newCtor("Vector2int16")
+    env.Vector3int16 = newCtor("Vector3int16")
+    env.CatalogSearchParams = newCtor("CatalogSearchParams")
+    env.SharedTable = newCtor("SharedTable")
+    env.PhysicalProperties = newCtor("PhysicalProperties")
+    env.Font = newCtor("Font")
+    env.TweenInfo = newCtor("TweenInfo")
+    env.NumberRange = newCtor("NumberRange")
+    env.NumberSequence = newCtor("NumberSequence")
+    env.NumberSequenceKeypoint = newCtor("NumberSequenceKeypoint")
+    env.ColorSequence = newCtor("ColorSequence")
+    env.ColorSequenceKeypoint = newCtor("ColorSequenceKeypoint")
+    env.BrickColor = newCtor("BrickColor")
+    env.OverlapParams = newCtor("OverlapParams")
+    env.RaycastParams = newCtor("RaycastParams")
     env.DateTime = setmetatable({
         now = function()
             local dt = makeProxy("DateTime")
@@ -1596,20 +2560,35 @@ local function createEnv()
     local taskTbl = {
         wait = function(time)
             yieldTick(); tick()
-            return time or 0
+            return time or 0.015
         end,
-        spawn = function(f, ...) tick(); runCallback(f, ...) end,
-        delay = function(t, f) tick(); runCallback(f) end,
-        cancel = function() end,
+        spawn = function(f, ...)
+            tick()
+            local args = table.pack(...)
+            local co = coroutine.create(function() runCallback(f, table.unpack(args, 1, args.n)) end)
+            coroutine.resume(co)
+            return co
+        end,
+        delay = function(t, f)
+            tick()
+            local co = coroutine.create(function() runCallback(f) end)
+            return co
+        end,
+        cancel = function(co) end,
         clock = function() return os.clock() end,
-        defer = function(f, ...) tick(); runCallback(f, ...) end,
+        defer = function(f, ...)
+            tick()
+            local args = table.pack(...)
+            local co = coroutine.create(function() runCallback(f, table.unpack(args, 1, args.n)) end)
+            return co
+        end,
         synchronize = function() end,
         desynchronize = function() end,
     }
     env.task = setmetatable(taskTbl, {
         __newindex = function() error("attempt to write to read-only library table", 2) end
     })
-    env.wait = function() yieldTick(); return 0 end
+    env.wait = function(time) yieldTick(); return time or 0.015 end
     env.spawn = env.task.spawn
     env.delay = env.task.delay
     env.tick = function() return os.time() end
@@ -1627,8 +2606,26 @@ local function createEnv()
     env.readfile = function() return "" end
     env.writefile = function() end
     env.isfile = function() return false end
-    env.newcclosure = function(f) return f end
-    env.getgc = function() return {} end
+    env.newcclosure = function(f)
+        if type(f) == "function" then cclosureSet[f] = true end
+        return f
+    end
+    env.iscclosure = function(f)
+        if type(f) ~= "function" then return false end
+        if cclosureSet[f] then return true end
+        if knownCFunctions[f] then return true end
+        local dw = env.debug.info(f, "w")
+        if dw == "C" then return true end
+        return false
+    end
+    env.islclosure = function(f)
+        if type(f) ~= "function" then return false end
+        if cclosureSet[f] then return false end
+        if knownCFunctions[f] then return false end
+        local dw = env.debug.info(f, "w")
+        if dw == "C" then return false end
+        return true
+    end
     env.getgenv = function() return env end
     env.getrenv = function() return setmetatable({}, { __index = env }) end
     env.gethui = function() return env.game end
@@ -1652,15 +2649,42 @@ local function createEnv()
     env.getcallbackvalue = function(f) return f end
     env.isluau = function() return true end
     env.isourclosure = function() return false end
-    env.iscclosure = function(f)
-        if type(f) ~= "function" then return false end
-        return true
-    end
-    env.islclosure = function(f)
-        if type(f) ~= "function" then return false end
-        return false
-    end
     env.isexecutorclosure = function() return false end
+    -- Register sandbox functions as C closures for iscclosure checks
+    knownCFunctions[env.print] = true
+    knownCFunctions[env.warn] = true
+    knownCFunctions[env.pcall] = true
+    knownCFunctions[env.xpcall] = true
+    knownCFunctions[env.error] = true
+    knownCFunctions[env.assert] = true
+    knownCFunctions[env.tonumber] = true
+    knownCFunctions[env.tostring] = true
+    knownCFunctions[env.type] = true
+    knownCFunctions[env.typeof] = true
+    knownCFunctions[env.select] = true
+    knownCFunctions[env.pairs] = true
+    knownCFunctions[env.ipairs] = true
+    knownCFunctions[env.next] = true
+    knownCFunctions[env.rawget] = true
+    knownCFunctions[env.rawset] = true
+    knownCFunctions[env.rawequal] = true
+    knownCFunctions[env.rawlen] = true
+    knownCFunctions[env.setmetatable] = true
+    knownCFunctions[env.getmetatable] = true
+    knownCFunctions[env.unpack] = true
+    knownCFunctions[env.ypcall] = true
+    knownCFunctions[env.settings] = true
+    knownCFunctions[env.wait] = true
+    knownCFunctions[env.spawn] = true
+    knownCFunctions[env.delay] = true
+    knownCFunctions[env.tick] = true
+    knownCFunctions[env.time] = true
+    knownCFunctions[env.elapsedTime] = true
+    knownCFunctions[env.version] = true
+    knownCFunctions[env.isluau] = true
+    knownCFunctions[env.iscclosure] = true
+    knownCFunctions[env.islclosure] = true
+    knownCFunctions[env.newcclosure] = true
     env.getscriptbytecode = function(script)
         if script == nil then error("invalid argument to getscriptbytecode", 2) end
         if type(script) == "table" then
@@ -1691,8 +2715,6 @@ local function createEnv()
     env.clonefunction = function(f) return f end
     env.cloneref = function(ref) return ref end
     env.compareinstances = function(a, b) return a == b end
-    env.loadstring = makeProxy("loadstring")
-    env.load = env.loadstring
     env.setclipboard = function() end
     env.getclipboard = function() return "" end
     env.readfile = function() return "" end
@@ -2188,6 +3210,7 @@ local function dump(source: string): string
     for k in pairs(serviceCache) do serviceCache[k] = nil end
     for k in pairs(destroyedInstances) do destroyedInstances[k] = nil end
     for k in pairs(memStorage) do memStorage[k] = nil end
+    for k in pairs(parentChildMap) do parentChildMap[k] = nil end
     emit("-- EnvLog output")
     emit("")
     local env = createEnv()
