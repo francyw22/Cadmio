@@ -3098,7 +3098,29 @@ makeProxy = function(name: string): any
         if isMethod and (fieldName == "CompressBuffer" or fieldName == "DecompressBuffer") and parent then
             local parentName = proxyName(parent)
             emit(string.format('local %s = %s:%s(%s)', retName, parentName, fieldName, table.concat(parts, ", ")))
-            return { _data = "compressed", _size = 6 }
+            local bufArg = args[startIdx]
+            if type(bufArg) == "table" and bufArg._data then
+                if fieldName == "DecompressBuffer" then
+                    local scriptPath = SCRIPT_DIR and (SCRIPT_DIR .. "zstd_decompress.py") or "zstd_decompress.py"
+                    local dbgIdx = (luraphDebugCount or 0) + 1
+                    luraphDebugCount = dbgIdx
+                    local dbgFile = "/tmp/luraph_dec_" .. tostring(dbgIdx) .. ".lua"
+                    local env2 = { ZSTD_DEBUG_FILE = dbgFile }
+                    local ok2, proc = pcall(process.spawn, "python3", { scriptPath }, {
+                        stdin = bufArg._data,
+                        stdout = "pipe",
+                        stderr = "pipe",
+                        env = env2,
+                    })
+                    if ok2 and proc and proc.stdout then
+                        local decoded = proc.stdout
+                        if type(decoded) == "string" and #decoded > 0 then
+                            return { _data = decoded, _size = #decoded }
+                        end
+                    end
+                end
+            end
+            return { _data = "", _size = 0 }
         end
 
         if isMethod and fieldName == "WorldToScreenPoint" and parent then
@@ -3623,6 +3645,14 @@ local function createEnv()
             if type(t) ~= "table" then return false end
             return frozenTables[t] == true
         end,
+        create = function(n, v)
+            if type(n) ~= "number" then n = 0 end
+            if n < 0 then n = 0 end
+            if n > 1000000 then n = 1000000 end
+            local t = {}
+            for i = 1, math.floor(n) do t[i] = v end
+            return t
+        end,
     })
     local function checkFrozen(t, op, key)
         if type(t) == "table" and (frozenTables[t] or readonlyTables[t]) then
@@ -3804,7 +3834,7 @@ local function createEnv()
                 end
             end
             if k == "setfenv" then
-                return function(f, env) error("setfenv: cannot change environment of given object", 2) end
+                return function(f, env) return f end
             end
             if k == "getfenv" then
                 return function(level)
@@ -4026,7 +4056,7 @@ local function createEnv()
         return "nil"
     end
     env.setfenv = function(f, env)
-        error("setfenv: cannot change environment of given object", 2)
+        return f
     end
     env.ypcall = env.pcall
     env.settings = function()
@@ -4040,40 +4070,39 @@ local function createEnv()
     env.GetMemory = function() return 0 end
     env.GetGPUStats = function() return {} end
     env.GetPlatform = function() return "Windows" end
-    env.buffer = {
-        create = function(size) return { _size = size, _data = {} } end,
-        readi8 = function(buf, offset) return 0 end,
-        readu8 = function(buf, offset) return 0 end,
-        readi16 = function(buf, offset) return 0 end,
-        readu16 = function(buf, offset) return 0 end,
-        readi32 = function(buf, offset) return 0 end,
-        readu32 = function(buf, offset) return 0 end,
-        readf32 = function(buf, offset) return 0 end,
-        readf64 = function(buf, offset) return 0 end,
-        writei8 = function(buf, offset, val) end,
-        writeu8 = function(buf, offset, val) end,
-        writei16 = function(buf, offset, val) end,
-        writeu16 = function(buf, offset, val) end,
-        writei32 = function(buf, offset, val) end,
-        writeu32 = function(buf, offset, val) if offset and offset > 100000 then error("buffer overflow", 0) end end,
-        writef32 = function(buf, offset, val) end,
-        writef64 = function(buf, offset, val) end,
-        readstring = function(buf, offset, count) return string.rep("l", count or 0) end,
-        writestring = function(buf, offset, str) end,
-        len = function(buf) return type(buf) == "table" and buf._size or 0 end,
-        copy = function(dst, dstOffset, src, srcOffset, count) end,
-        fill = function(buf, offset, val, count) end,
-        tobits = function(buf) return {} end,
-        frombits = function(bits) return { _size = 0, _data = {} } end,
-    }
     env.getfenv = function(level)
         if type(level) == "number" and level > 100 then return nil end
         return env
     end
     env.version = function() return "0.728.0.7280895" end
     env._VERSION = "Luau"
-    env.loadstring = nil
-    env.load = nil
+    env.loadstring = function(src, chunkname)
+        if type(src) ~= "string" then return nil, "invalid argument #1 to 'loadstring'" end
+        local ok, compiled = pcall(luau.compile, src, { optimizationLevel = 1 })
+        if not ok then return nil, tostring(compiled) end
+        local loadOk, fn = pcall(luau.load, compiled, { debugName = chunkname or "loadstring", environment = env })
+        if not loadOk or type(fn) ~= "function" then return nil, tostring(fn) end
+        return fn
+    end
+    env.load = function(src, chunkname, mode, envArg)
+        if type(src) == "string" then
+            local ok, compiled = pcall(luau.compile, src, { optimizationLevel = 1 })
+            if not ok then return nil, tostring(compiled) end
+            local loadOk, fn = pcall(luau.load, compiled, { debugName = chunkname or "load", environment = envArg or env })
+            if not loadOk or type(fn) ~= "function" then return nil, tostring(fn) end
+            return fn
+        elseif type(src) == "function" then
+            local chunks = {}
+            while true do
+                local chunk = src()
+                if not chunk then break end
+                table.insert(chunks, chunk)
+            end
+            local full = table.concat(chunks)
+            return env.loadstring(full, chunkname, mode, envArg)
+        end
+        return nil, "invalid argument #1 to 'load'"
+    end
 
     env.game = spyInstance("DataModel", "game", true)
     env.Game = env.game
@@ -4322,53 +4351,43 @@ local function createEnv()
     env.Font = setmetatable({}, { __index = function(_, k) return makeProxy("Font." .. tostring(k)) end })
     env.buffer = setmetatable({
         create = function(n)
-            if type(n) ~= "number" or n < 0 then error("invalid argument #1 to 'create' (size must be non-negative)", 2) end
-            return { _data = string.rep("\0", math.floor(n)), _size = math.floor(n) }
+            if type(n) ~= "number" then n = 0 end
+            if n < 0 then n = 0 end
+            if n > 100000000 then n = 100000000 end
+            return buffer.create(math.floor(n))
         end,
         fromstring = function(s)
             s = s or ""
-            return { _data = s, _size = #s }
+            return buffer.fromstring(s)
         end,
         tostring = function(b)
-            if type(b) ~= "table" or not b._data then error("invalid argument #1 to 'tostring' (buffer expected)", 2) end
-            return b._data
+            return buffer.tostring(b)
         end,
         len = function(b)
-            if type(b) ~= "table" then return 0 end
-            return b._size or #(b._data or "")
+            return buffer.len(b)
         end,
-        copy = function(dst, dstOffset, src, srcOffset, count)
-            if type(dst) ~= "table" or type(src) ~= "table" then return end
-            count = count or 0
-            if dstOffset < 0 or srcOffset < 0 or count < 0 then error("buffer.copy: out of bounds", 2) end
-            if dstOffset + count > (dst._size or 0) then error("buffer.copy: write out of bounds", 2) end
-            if srcOffset + count > (src._size or 0) then error("buffer.copy: read out of bounds", 2) end
-        end,
-        fill = function(b, offset, val, count)
-            if type(b) ~= "table" then return end
-            count = count or 1
-            if offset + count > (b._size or 0) then error("buffer.fill: out of bounds", 2) end
-        end,
-        tobits = function(b) return {} end,
-        frombits = function(bits) return { _data = "", _size = 0 } end,
-        readi8 = function(b, o) if type(b)=="table" and (o<0 or o>=(b._size or 0)) then error("buffer.readi8: out of bounds", 2) end return 0 end,
-        readu8 = function(b, o) if type(b)=="table" and (o<0 or o>=(b._size or 0)) then error("buffer.readu8: out of bounds", 2) end return 0 end,
-        readi16 = function(b, o) if type(b)=="table" and (o<0 or o+1>=(b._size or 0)) then error("buffer.readi16: out of bounds", 2) end return 0 end,
-        readu16 = function(b, o) if type(b)=="table" and (o<0 or o+1>=(b._size or 0)) then error("buffer.readu16: out of bounds", 2) end return 0 end,
-        readi32 = function(b, o) if type(b)=="table" and (o<0 or o+3>=(b._size or 0)) then error("buffer.readi32: out of bounds", 2) end return 0 end,
-        readu32 = function(b, o) if type(b)=="table" and (o<0 or o+3>=(b._size or 0)) then error("buffer.readu32: out of bounds", 2) end return 0 end,
-        readf32 = function(b, o) if type(b)=="table" and (o<0 or o+3>=(b._size or 0)) then error("buffer.readf32: out of bounds", 2) end return 0 end,
-        readf64 = function(b, o) if type(b)=="table" and (o<0 or o+7>=(b._size or 0)) then error("buffer.readf64: out of bounds", 2) end return 0 end,
-        writei8 = function(b, o, v) if type(b)=="table" and (o<0 or o>=(b._size or 0)) then error("buffer.writei8: out of bounds", 2) end end,
-        writeu8 = function(b, o, v) if type(b)=="table" and (o<0 or o>=(b._size or 0)) then error("buffer.writeu8: out of bounds", 2) end end,
-        writei16 = function(b, o, v) if type(b)=="table" and (o<0 or o+1>=(b._size or 0)) then error("buffer.writei16: out of bounds", 2) end end,
-        writeu16 = function(b, o, v) if type(b)=="table" and (o<0 or o+1>=(b._size or 0)) then error("buffer.writeu16: out of bounds", 2) end end,
-        writei32 = function(b, o, v) if type(b)=="table" and (o<0 or o+3>=(b._size or 0)) then error("buffer.writei32: out of bounds", 2) end end,
-        writeu32 = function(b, o, v) if type(b)=="table" and (o<0 or o+3>=(b._size or 0)) then error("buffer.writeu32: out of bounds", 2) end end,
-        writef32 = function(b, o, v) if type(b)=="table" and (o<0 or o+3>=(b._size or 0)) then error("buffer.writef32: out of bounds", 2) end end,
-        writef64 = function(b, o, v) if type(b)=="table" and (o<0 or o+7>=(b._size or 0)) then error("buffer.writef64: out of bounds", 2) end end,
-        readstring = function(b, o, c) if type(b)=="table" and (o<0 or o+(c or 0)>(b._size or 0)) then error("buffer.readstring: out of bounds", 2) end return string.rep("l", c or 0) end,
-        writestring = function(b, o, s) if type(b)=="table" and (o<0 or o+#(s or "")>(b._size or 0)) then error("buffer.writestring: out of bounds", 2) end end,
+        copy = function(...) return buffer.copy(...) end,
+        fill = function(...) return buffer.fill(...) end,
+        tobits = function(b) return buffer.tobits(b) end,
+        frombits = function(...) return buffer.frombits(...) end,
+        readi8 = function(...) return buffer.readi8(...) end,
+        readu8 = function(...) return buffer.readu8(...) end,
+        readi16 = function(...) return buffer.readi16(...) end,
+        readu16 = function(...) return buffer.readu16(...) end,
+        readi32 = function(...) return buffer.readi32(...) end,
+        readu32 = function(...) return buffer.readu32(...) end,
+        readf32 = function(...) return buffer.readf32(...) end,
+        readf64 = function(...) return buffer.readf64(...) end,
+        writei8 = function(...) return buffer.writei8(...) end,
+        writeu8 = function(...) return buffer.writeu8(...) end,
+        writei16 = function(...) return buffer.writei16(...) end,
+        writeu16 = function(...) return buffer.writeu16(...) end,
+        writei32 = function(...) return buffer.writei32(...) end,
+        writeu32 = function(...) return buffer.writeu32(...) end,
+        writef32 = function(...) return buffer.writef32(...) end,
+        writef64 = function(...) return buffer.writef64(...) end,
+        readstring = function(...) return buffer.readstring(...) end,
+        writestring = function(...) return buffer.writestring(...) end,
     }, {
         _serialName = "buffer",
         __index = function() return function() end end,
@@ -4685,14 +4704,56 @@ local function createEnv()
         require = true,
         dofile = true,
         package = true,
-        load = true,
-        loadstring = true,
         loadfile = true,
         io = true,
     }
     setmetatable(env, {
         __index = function(t, k)
             if blockedGlobals[k] then return nil end
+            if k == "iscclosure" then return function(f) return type(f) == "function" end end
+            if k == "islclosure" then return function(f) return false end end
+            if k == "newcclosure" then return function(f) return f end end
+            if k == "hookfunction" then return function(t, r) return t end end
+            if k == "clonefunction" then return function(f) return f end end
+            if k == "cloneref" then return function(r) return r end end
+            if k == "getrawmetatable" then return function(t) return getmetatable(t) end end
+            if k == "setrawmetatable" then return function(t, mt) return setmetatable(t, mt) end end
+            if k == "getgenv" then return function() return env end end
+            if k == "getrenv" then return function() return env end end
+            if k == "getregistry" then return function() return {} end end
+            if k == "getidentity" then return function() return 2 end end
+            if k == "identifyexecutor" then return function() return "envlog", "1.0" end end
+            if k == "isluau" then return function() return true end end
+            if k == "checkcaller" then return function() return false end end
+            if k == "getinstances" then return function() return {} end end
+            if k == "getnilinstances" then return function() return {} end end
+            if k == "getscripts" then return function() return {} end end
+            if k == "getloadedmodules" then return function() return {} end end
+            if k == "getrunningscripts" then return function() return {} end end
+            if k == "Drawing" then return makeProxy("Drawing") end
+            if k == "crypt" then return makeProxy("crypt") end
+            if k == "base64" then return { encode = function(s) return s end, decode = function(s) return s end } end
+            if k == "http_request" then return function() return {StatusCode=200,Body="",Success=true} end end
+            if k == "request" then return function() return {StatusCode=200,Body="",Success=true} end end
+            if k == "setclipboard" then return function() end end
+            if k == "readfile" then return function() return "" end end
+            if k == "writefile" then return function() end end
+            if k == "isfile" then return function() return false end end
+            if k == "isfolder" then return function() return false end end
+            if k == "getnamecallmethod" then return function() return "" end end
+            if k == "hookmetamethod" then return function() return function() end end end
+            if k == "newproxy" then return function(a) return newproxy(a) end end
+            if k == "setreadonly" then return function() end end
+            if k == "isreadonly" then return function() return false end end
+            if k == "fireclickdetector" then return function() end end
+            if k == "fireproximityprompt" then return function() end end
+            if k == "getscriptbytecode" then return function() return "" end end
+            if k == "decompile" then return function() return "" end end
+            if k == "getscripthash" then return function() return "" end end
+            if k == "gethui" then return function() return env.game end end
+            if k == "gethwid" then return function() return "sandbox" end end
+            if k == "getcustomasset" then return function() return "rbxasset://temp" end end
+            if k == "syn" then return setmetatable({request=function() return {StatusCode=200,Body="",Success=true} end}, {__index=function() return function() return nil end end}) end
             return nil
         end,
         __newindex = function(t, k, v)
@@ -4709,9 +4770,7 @@ local function createEnv()
         base64 = env.base64,
         aux = setmetatable({}, { __index = function(_, k) return function() return nil end end }),
     }, { __index = function(_, k) return function() return nil end end })
-    env.getregistry = function()
-        return {}
-    end
+    env.getregistry = function() return {} end
     env.getidentity = function() return 2 end
     env.getthread = function() return coroutine.running() end
     env.getstack = function() return {} end
@@ -4719,6 +4778,10 @@ local function createEnv()
     env.isourclosure = function() return true end
     env.isexecutorclosure = function() return true end
     env.isfunction = function(f) return type(f) == "function" end
+    env.Path2DControlPoint = makeProxy("Path2DControlPoint")
+    env.CrosshairImage = makeProxy("CrosshairImage")
+    env.IB_CRASH = false
+    env.DControlPoint = makeProxy("DControlPoint")
     env.process = setmetatable({
         exit = function() emit("-- process.exit() called") end,
         args = {}, env = {}, cwd = function() return "/" end, os = "linux", pid = 1,
@@ -4823,8 +4886,6 @@ end
 local DARKLUA_BIN = (process.env.DARKLUA_BIN or "darklua") :: string
 local SANDBOX_PRELUDE = table.concat({
     "local io = nil",
-    "local load = nil",
-    "local loadstring = nil",
     "local dofile = nil",
     "local require = nil",
     "local package = nil",
