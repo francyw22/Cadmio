@@ -3099,28 +3099,35 @@ makeProxy = function(name: string): any
             local parentName = proxyName(parent)
             emit(string.format('local %s = %s:%s(%s)', retName, parentName, fieldName, table.concat(parts, ", ")))
             local bufArg = args[startIdx]
-            if type(bufArg) == "table" and bufArg._data then
-                if fieldName == "DecompressBuffer" then
-                    local scriptPath = SCRIPT_DIR and (SCRIPT_DIR .. "zstd_decompress.py") or "zstd_decompress.py"
-                    local dbgIdx = (luraphDebugCount or 0) + 1
-                    luraphDebugCount = dbgIdx
-                    local dbgFile = "/tmp/luraph_dec_" .. tostring(dbgIdx) .. ".lua"
-                    local env2 = { ZSTD_DEBUG_FILE = dbgFile }
-                    local ok2, proc = pcall(process.spawn, "python3", { scriptPath }, {
-                        stdin = bufArg._data,
-                        stdout = "pipe",
-                        stderr = "pipe",
-                        env = env2,
-                    })
-                    if ok2 and proc and proc.stdout then
-                        local decoded = proc.stdout
-                        if type(decoded) == "string" and #decoded > 0 then
-                            return { _data = decoded, _size = #decoded }
-                        end
+            if bufArg == nil then
+                return { _data = "", _size = 0 }
+            end
+            local rawData = nil
+            if type(bufArg) == "string" then
+                rawData = bufArg
+            elseif type(bufArg) == "table" and bufArg._data then
+                rawData = bufArg._data
+            else
+                local ok, str = pcall(buffer.tostring, bufArg)
+                if ok and type(str) == "string" then
+                    rawData = str
+                end
+            end
+            if rawData and #rawData > 0 and fieldName == "DecompressBuffer" then
+                local scriptPath = SCRIPT_DIR and (SCRIPT_DIR .. "zstd_decompress.py") or "zstd_decompress.py"
+                local ok2, proc = pcall(process.spawn, "python3", { scriptPath }, {
+                    stdin = rawData,
+                    stdout = "pipe",
+                    stderr = "pipe",
+                })
+                if ok2 and proc and proc.stdout then
+                    local decoded = proc.stdout
+                    if type(decoded) == "string" and #decoded > 0 then
+                        return buffer.fromstring(decoded)
                     end
                 end
             end
-            return { _data = "", _size = 0 }
+            return buffer.fromstring("")
         end
 
         if isMethod and fieldName == "WorldToScreenPoint" and parent then
