@@ -196,8 +196,6 @@ if _game == nil and roblox ~= nil then
     if ok then _game = resolved end
 end
 
-print("hi")
-
 if _game ~= nil then
     local oldGetService = _game.GetService
 
@@ -1837,6 +1835,21 @@ local function createEnv()
     env._G = {}
     env._ENV = env
     local cclosureSet = setmetatable({}, { __mode = "k" })
+    local function getFunctionWhat(f)
+        if type(f) ~= "function" then
+            return nil
+        end
+        if knownCFunctions[f] or cclosureSet[f] then
+            return "C"
+        end
+        if _realDebugInfo then
+            local ok, what = pcall(_realDebugInfo, f, "w")
+            if ok and type(what) == "string" then
+                return what
+            end
+        end
+        return "Lua"
+    end
     local function copyLib(lib, extra)
         local c = {}
         for k, v in pairs(lib) do c[k] = v end
@@ -1893,104 +1906,8 @@ local function createEnv()
     })
     env.coroutine = copyLib(coroutine)
     local clockVal = 0
-    env.os = copyLib(os, {
-        clock = function() clockVal += 0.016; return clockVal end,
-        time = function() return os.time() end,
-        date = function(fmt, t) return os.date(fmt, t) end,
-        difftime = function(t2, t1) return t2 - t1 end,
-        exit = function() emit("-- os.exit() called") end,
-        halt = function() emit("-- os.halt() called") end,
-        execute = nil,
-        remove = nil,
-        rename = nil,
-        getenv = nil,
-        tmpname = nil,
-        setlocale = nil,
-    })
-    env.debug = setmetatable({
-        info = function(level, what)
-            if type(level) == "function" then
-                local isC = knownCFunctions[level] or cclosureSet[level] or false
-                if not what or what == "" then
-                    return { what = isC and "C" or "Lua", name = "", source = isC and "[C]" or "envlog", currentline = -1,
-                             nups = 0, nparams = 0, is_vararg = false }
-                end
-                local result = {}
-                for char in tostring(what):gmatch(".") do
-                    if char == "f" then result[#result+1] = level
-                    elseif char == "s" then result[#result+1] = isC and "[C]" or "envlog"
-                    elseif char == "l" then result[#result+1] = -1
-                    elseif char == "n" then result[#result+1] = ""
-                    elseif char == "a" then result[#result+1] = 0; result[#result+2] = false
-                    elseif char == "w" then result[#result+1] = isC and "C" or "Lua"
-                    end
-                end
-                return table.unpack(result)
-            end
-            if type(level) == "number" then
-                if level > 10 then
-                    if not what or what == "" then return nil end
-                    return nil
-                end
-                if not what or what == "" then
-                    return { what = "Lua", name = "", source = "envlog", currentline = level,
-                             nups = 0, nparams = 0, is_vararg = false }
-                end
-                local result = {}
-                for char in tostring(what):gmatch(".") do
-                    if char == "f" then result[#result+1] = function() end
-                    elseif char == "s" then result[#result+1] = "envlog"
-                    elseif char == "l" then result[#result+1] = level
-                    elseif char == "n" then result[#result+1] = ""
-                    elseif char == "a" then result[#result+1] = 0; result[#result+2] = false
-                    elseif char == "w" then result[#result+1] = "Lua"
-                    end
-                end
-                return table.unpack(result)
-            end
-            if not what or what == "" then return nil end
-            local result = {}
-            for char in tostring(what):gmatch(".") do
-                if char == "f" then result[#result+1] = function() end
-                elseif char == "s" then result[#result+1] = "envlog"
-                elseif char == "l" then result[#result+1] = 1
-                elseif char == "n" then result[#result+1] = ""
-                elseif char == "a" then result[#result+1] = 0; result[#result+2] = false
-                elseif char == "w" then result[#result+1] = "Lua"
-                end
-            end
-            return table.unpack(result)
-        end,
-        traceback = realDebugTraceback or function(msg) return tostring(msg) end,
-        gethook = function() return nil end,
-        getinfo = function(f, what)
-            if type(f) == "number" and f > 10 then return nil end
-            if type(f) == "function" then
-                local isC = knownCFunctions[f] or cclosureSet[f] or false
-                if not isC then
-                    local dw = env.debug.info(f, "w")
-                    isC = (dw == "C")
-                end
-                return { what = isC and "C" or "Lua", name = "", source = isC and "=[C]" or "envlog", currentline = -1,
-                         nups = 0, nparams = 0, is_vararg = false }
-            end
-            return { what = "C", name = "", source = "=[C]", currentline = -1,
-                     nups = 0, nparams = 0, is_vararg = false }
-        end,
-        getupvalue = false,
-        setupvalue = false,
-        getconstant = function() return nil end,
-        setconstant = function() end,
-        getstack = function() return nil end,
-        setstack = function() end,
-        getproto = function() return nil end,
-        getprotos = function() return {} end,
-    }, { __index = function(_, k)
-        if k == "getregistry" then return nil end
-        if k == "getupvalue" then return nil end
-        if k == "setupvalue" then return nil end
-        return function() return nil end
-    end })
+    env.os = nil
+    env.debug = nil
     env.io = nil
     local function wrapPcall(f, ...)
         local results = table.pack(pcall(f, ...))
@@ -2207,8 +2124,8 @@ local function createEnv()
     end
     env.version = function() return "0.0.0" end
     env._VERSION = "Luau"
-    env.loadstring = false
-    env.load = false
+    env.loadstring = nil
+    env.load = nil
 
     env.game = spyInstance("DataModel", "game", true)
     env.Game = env.game
@@ -2613,7 +2530,7 @@ local function createEnv()
         if type(f) ~= "function" then return false end
         if cclosureSet[f] then return true end
         if knownCFunctions[f] then return true end
-        local dw = env.debug.info(f, "w")
+        local dw = getFunctionWhat(f)
         if dw == "C" then return true end
         return false
     end
@@ -2621,7 +2538,7 @@ local function createEnv()
         if type(f) ~= "function" then return false end
         if cclosureSet[f] then return false end
         if knownCFunctions[f] then return false end
-        local dw = env.debug.info(f, "w")
+        local dw = getFunctionWhat(f)
         if dw == "C" then return false end
         return true
     end
@@ -2758,10 +2675,10 @@ local function createEnv()
     env.newproxy = function() return setmetatable({}, {}) end
     env.gcinfo = function() return 0 end
     env.collectgarbage = function() return 0 end
-    env.require = false
+    env.require = nil
     env.shared = env
-    env.dofile = false
-    env.package = false
+    env.dofile = nil
+    env.package = nil
 
     local blockedGlobals = {
         require = true,
@@ -2770,6 +2687,9 @@ local function createEnv()
         load = true,
         loadstring = true,
         loadfile = true,
+        os = true,
+        debug = true,
+        io = true,
     }
     setmetatable(env, {
         __index = function(t, k)
@@ -2886,6 +2806,18 @@ local function beautify()
 end
 
 local DARKLUA_BIN = (process.env.DARKLUA_BIN or "darklua") :: string
+local SANDBOX_PRELUDE = table.concat({
+    "local io = nil",
+    "local os = nil",
+    "local debug = nil",
+    "local load = nil",
+    "local loadstring = nil",
+    "local dofile = nil",
+    "local require = nil",
+    "local package = nil",
+    "local loadfile = nil",
+    "",
+}, "\n")
 
 local function isValidIdent(s: string): boolean
     return s ~= "" and s:match("^[%a_][%w_]*$") ~= nil
@@ -3236,7 +3168,7 @@ local function dump(source: string): string
 
     local fn
     local loadOk, loadErr = pcall(function()
-        local compiled = luau.compile(source, { optimizationLevel = 2 })
+        local compiled = luau.compile(SANDBOX_PRELUDE .. source, { optimizationLevel = 2 })
         fn = luau.load(compiled, { debugName = "envlog", environment = env })
     end)
     if not loadOk or not fn then
