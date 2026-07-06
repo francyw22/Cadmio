@@ -3,12 +3,12 @@ import io
 import asyncio
 import tempfile
 import subprocess
-import re  # Añadido para buscar URLs
+import re
 
 import discord
 from discord.ext import commands
 from dotenv import load_dotenv
-import aiohttp  # Añadido para descargar el contenido de los links
+import aiohttp
 
 load_dotenv()
 
@@ -22,16 +22,12 @@ intents.message_content = True
 
 bot = commands.Bot(command_prefix=".", intents=intents, help_command=None)
 
-# Expresión regular simple para detectar URLs
 URL_PATTERN = re.compile(r'https?://\S+')
 
 async def download_from_url(url: str) -> str | None:
-    """Descarga el contenido de texto plano de una URL, adaptando formatos comunes."""
-    # Modificaciones rápidas para obtener el contenido "raw" (en bruto) de sitios comunes
     if "github.com" in url and "/blob/" in url:
         url = url.replace("github.com", "raw.githubusercontent.com").replace("/blob/", "/")
     elif "pastebin.com" in url and "/raw/" not in url:
-        # Extrae el ID del paste y genera el link raw
         paste_id = url.split("/")[-1]
         url = f"https://pastebin.com/raw/{paste_id}"
 
@@ -45,13 +41,11 @@ async def download_from_url(url: str) -> str | None:
     return None
 
 async def extract_code(ctx: commands.Context, content: str) -> str | None:
-    # 1. Comprobar si hay archivos adjuntos
     if ctx.message.attachments:
         att = ctx.message.attachments[0]
         data = await att.read()
         return data.decode("utf-8", errors="ignore")
 
-    # 2. Comprobar si es una respuesta a otro mensaje
     if ctx.message.reference:
         try:
             ref_msg = await ctx.channel.fetch_message(ctx.message.reference.message_id)
@@ -64,7 +58,6 @@ async def extract_code(ctx: commands.Context, content: str) -> str | None:
             if ref_msg.content:
                 content = ref_msg.content + "\n" + content
 
-    # 3. Buscar enlaces en el contenido recopilado
     match = URL_PATTERN.search(content)
     if match:
         url = match.group(0)
@@ -72,7 +65,6 @@ async def extract_code(ctx: commands.Context, content: str) -> str | None:
         if code:
             return code
 
-    # 4. Buscar bloques de código Markdown (```lua ... ```)
     if "```" in content:
         parts = content.split("```")
         if len(parts) >= 2:
