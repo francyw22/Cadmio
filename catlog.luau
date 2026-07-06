@@ -30,165 +30,223 @@ for _, arg in process.args do
     end
 end
 
-local serviceNames = {
-    Players = "Players",
-    Workspace = "Workspace",
-    ReplicatedStorage = "ReplicatedStorage",
-    ServerStorage = "ServerStorage",
-    ServerScriptService = "ServerScriptService",
-    StarterGui = "StarterGui",
-    StarterPack = "StarterPack",
-    StarterPlayer = "StarterPlayer",
-    Lighting = "Lighting",
-    SoundService = "SoundService",
-    Chat = "Chat",
-    RunService = "RunService",
-    UserInputService = "UserInputService",
-    TweenService = "TweenService",
-    GroupService = "GroupService",
-    AnimationClipProvider = "AnimationClipProvider",
-    HttpService = "HttpService",
-    MarketplaceService = "MarketplaceService",
-    TeleportService = "TeleportService",
-    PathfindingService = "PathfindingService",
-    CollectionService = "CollectionService",
-    PhysicsService = "PhysicsService",
-    ProximityPromptService = "ProximityPromptService",
-    ContextActionService = "ContextActionService",
-    GuiService = "GuiService",
-    HapticService = "HapticService",
-    VRService = "VRService",
-    CoreGui = "CoreGui",
-    Teams = "Teams",
-    InsertService = "InsertService",
-    DataStoreService = "DataStoreService",
-    MessagingService = "MessagingService",
-    TextService = "TextService",
-    TextChatService = "TextChatService",
-    NetworkClient = "NetworkClient",
-    ContentProvider = "ContentProvider",
-    Debris = "Debris",
-    MemStorageService = "MemStorageService",
-    ChangeHistoryService = "ChangeHistoryService",
-    PlayerEmulatorService = "PlayerEmulatorService",
-    StylingService = "StylingService",
-    ScriptContext = "ScriptContext",
-    LocalizationService = "LocalizationService",
-    PolicyService = "PolicyService",
-    CaptureService = "CaptureService",
-    AnalyticsService = "AnalyticsService",
-    EncodingService = "EncodingService",
-    CorePackages = "CorePackages",
-    RobloxReplicatedStorage = "RobloxReplicatedStorage",
-    RobloxGui = "RobloxGui",
-    AvatarEditorService = "AvatarEditorService",
-    SocialService = "SocialService",
-    VoiceChatService = "VoiceChatService",
-    AdService = "AdService",
-    GeometryService = "GeometryService",
-    AssetService = "AssetService",
-    LocalizationService = "LocalizationService",
-    NotificationService = "NotificationService",
-    ProcessInstancePhysicsService = "ProcessInstancePhysicsService",
-    FriendService = "FriendService",
-    SessionService = "SessionService",
-    TimerService = "TimerService",
-    TouchInputService = "TouchInputService",
-    GamepadService = "GamepadService",
-    KeyboardService = "KeyboardService",
-    MouseService = "MouseService",
-    OmniRecommendationsService = "OmniRecommendationsService",
-    PerformanceService = "PerformanceService",
-    PlatformFriendService = "PlatformFriendService",
-    ReplicatedFirst = "ReplicatedFirst",
-    SpawnLocation = "SpawnLocation",
-    LogService = "LogService",
-    Stats = "Stats",
-    TweenService = "TweenService",
-    Debris = "Debris",
-    CoreGui = "CoreGui",
-    MarketplaceService = "MarketplaceService",
-    NotificationService = "NotificationService",
-    GuidRegistryService = "GuidRegistryService",
-    NetworkServer = "NetworkServer",
-    Geometry = "Geometry",
-    VirtualInputManager = "VirtualInputManager",
-    MLModelDeliveryService = "MLModelDeliveryService",
-    PartyEmulatorService = "PartyEmulatorService",
-    PlatformFriendsService = "PlatformFriendsService",
-    FriendService = "FriendService",
-    OmniRecommendationsService = "OmniRecommendationsService",
-    PerformanceControlService = "PerformanceControlService",
-    RbxAnalyticsService = "RbxAnalyticsService",
-    AbuseReportService = "AbuseReportService",
-    AdService = "AdService",
-    AdPortalService = "AdPortalService",
-    AppUpdateService = "AppUpdateService",
-    BrowserService = "BrowserService",
-    CookiesService = "CookiesService",
-    CoreGui = "CoreGui",
-    GamesService = "GamesService",
-    KeyboardService = "KeyboardService",
-    MarketplaceService = "MarketplaceService",
-    MouseService = "MouseService",
-    NotificationService = "NotificationService",
-    PurchaseDataService = "PurchaseDataService",
-    TimerService = "TimerService",
-    UGCValidationService = "UGCValidationService",
+local API_DUMP_PATH = "stuff/API-Dump.json"
+local apiClassesByName = {}
+
+local NUMBER_PRIMITIVE_TYPES = {
+    int = true,
+    int64 = true,
+    float = true,
+    double = true,
 }
-local serviceShortcuts = {
-    Players = "Players",
-    UserInputService = "UIS",
-    RunService = "RunService",
-    ReplicatedStorage = "ReplicatedStorage",
-    TweenService = "TweenService",
-    Workspace = "Workspace",
-    Lighting = "Lighting",
-    StarterGui = "StarterGui",
-    CoreGui = "CoreGui",
-    HttpService = "HttpService",
-    MarketplaceService = "MarketplaceService",
-    DataStoreService = "DataStoreService",
-    TeleportService = "TeleportService",
-    SoundService = "SoundService",
-    Chat = "Chat",
-    Teams = "Teams",
-    ProximityPromptService = "ProximityPromptService",
-    ContextActionService = "ContextActionService",
-    CollectionService = "CollectionService",
-    PathfindingService = "PathfindingService",
-    Debris = "Debris"
+
+local STRING_LIKE_DATA_TYPES = {
+    BinaryString = true,
+    Content = true,
+    ContentId = true,
+    ProtectedString = true,
+    SharedString = true,
 }
-local classParents = {
-    DataModel = {"DataModel", "ServiceProvider", "Instance"},
-    Workspace = {"Workspace", "WorldRoot", "Model", "PVInstance", "Instance"},
-    Camera = {"Camera", "Instance"},
-    Players = {"Players", "Instance"},
-    Player = {"Player", "Instance"},
-    PlayerGui = {"PlayerGui", "BasePlayerGui", "Instance"},
-    Backpack = {"Backpack", "Instance"},
-    PlayerScripts = {"PlayerScripts", "Instance"},
-    Folder = {"Folder", "Instance"},
-    Model = {"Model", "PVInstance", "Instance"},
-    Part = {"Part", "BasePart", "PVInstance", "Instance"},
-    BasePart = {"BasePart", "PVInstance", "Instance"},
-    ModuleScript = {"ModuleScript", "LuaSourceContainer", "Instance"},
-    LocalScript = {"LocalScript", "Script", "LuaSourceContainer", "Instance"},
-    Script = {"Script", "LuaSourceContainer", "Instance"},
-    Humanoid = {"Humanoid", "Instance"},
-    SoundService = {"SoundService", "Instance"},
-    Lighting = {"Lighting", "Instance"},
-    HttpService = {"HttpService", "Instance"},
-    TweenService = {"TweenService", "Instance"},
-    RunService = {"RunService", "Instance"},
-    TextService = {"TextService", "Instance"},
-    GuiService = {"GuiService", "Instance"},
-    ContentProvider = {"ContentProvider", "Instance"},
-    CollectionService = {"CollectionService", "Instance"},
-    MemStorageService = {"MemStorageService", "Instance"},
-    NetworkClient = {"NetworkClient", "Instance"},
-    ClientReplicator = {"ClientReplicator", "Instance"},
-}
+
+local function makeTagSet(items)
+    local tags = {}
+    if type(items) == "table" then
+        for _, item in ipairs(items) do
+            tags[tostring(item)] = true
+        end
+    end
+    return tags
+end
+
+local function normalizeApiType(typeInfo)
+    if type(typeInfo) ~= "table" or type(typeInfo.Name) ~= "string" then
+        return nil
+    end
+
+    return {
+        category = tostring(typeInfo.Category or ""),
+        name = typeInfo.Name,
+    }
+end
+
+local function loadApiDump()
+    local raw = fs.readFile(API_DUMP_PATH)
+    local decoded = serde.decode("json", raw)
+
+    for _, classEntry in ipairs(decoded.Classes or {}) do
+        if type(classEntry.Name) == "string" and classEntry.Name ~= "" then
+            local classInfo = {
+                name = classEntry.Name,
+                superclass = classEntry.Superclass,
+                tags = makeTagSet(classEntry.Tags),
+                members = {},
+            }
+
+            for _, member in ipairs(classEntry.Members or {}) do
+                if type(member.Name) == "string" and member.Name ~= "" then
+                    classInfo.members[member.Name] = {
+                        memberType = tostring(member.MemberType or ""),
+                        name = member.Name,
+                        security = member.Security,
+                        serialization = member.Serialization,
+                        threadSafety = member.ThreadSafety,
+                        tags = makeTagSet(member.Tags),
+                        valueType = normalizeApiType(member.ValueType),
+                        returnType = normalizeApiType(member.ReturnType),
+                        parameters = member.Parameters,
+                    }
+                end
+            end
+
+            apiClassesByName[classInfo.name] = classInfo
+        end
+    end
+end
+
+local apiLoadOk, apiLoadErr = pcall(loadApiDump)
+if not apiLoadOk then
+    error("Failed to load API dump from " .. API_DUMP_PATH .. ": " .. tostring(apiLoadErr))
+end
+
+local function getApiClassInfo(className)
+    if type(className) ~= "string" then
+        return nil
+    end
+    return apiClassesByName[className]
+end
+
+local function resolveApiMember(className, memberName)
+    if type(className) ~= "string" or type(memberName) ~= "string" then
+        return nil, nil
+    end
+
+    local classInfo = getApiClassInfo(className)
+    while classInfo do
+        local memberInfo = classInfo.members[memberName]
+        if memberInfo then
+            return memberInfo, classInfo
+        end
+
+        if type(classInfo.superclass) ~= "string" or classInfo.superclass == "" then
+            break
+        end
+        classInfo = getApiClassInfo(classInfo.superclass)
+    end
+
+    return nil, nil
+end
+
+local function classIsA(className, targetClassName)
+    if type(className) ~= "string" or type(targetClassName) ~= "string" then
+        return false
+    end
+    if className == targetClassName then
+        return true
+    end
+
+    local classInfo = getApiClassInfo(className)
+    while classInfo and type(classInfo.superclass) == "string" and classInfo.superclass ~= "" do
+        if classInfo.superclass == targetClassName then
+            return true
+        end
+        classInfo = getApiClassInfo(classInfo.superclass)
+    end
+
+    return false
+end
+
+local function isApiServiceClass(className)
+    local classInfo = getApiClassInfo(className)
+    return classInfo ~= nil and classInfo.tags.Service == true
+end
+
+local function isApiCreatableClass(className)
+    local classInfo = getApiClassInfo(className)
+    return classInfo ~= nil and not classInfo.tags.NotCreatable
+end
+
+local function getRuntimeTypeName(apiType)
+    if not apiType then
+        return nil
+    end
+
+    if apiType.category == "Primitive" then
+        if apiType.name == "bool" then
+            return "boolean"
+        end
+        if apiType.name == "string" then
+            return "string"
+        end
+        if apiType.name == "null" then
+            return "nil"
+        end
+        if NUMBER_PRIMITIVE_TYPES[apiType.name] then
+            return "number"
+        end
+    elseif apiType.category == "Enum" then
+        return "EnumItem"
+    elseif apiType.category == "Class" then
+        return "Instance"
+    elseif apiType.category == "DataType" then
+        if apiType.name == "RBXScriptSignal" then
+            return "RBXScriptSignal"
+        end
+        if STRING_LIKE_DATA_TYPES[apiType.name] then
+            return "string"
+        end
+        return apiType.name
+    end
+
+    return nil
+end
+
+local function isPropertyMember(memberInfo)
+    return memberInfo ~= nil and memberInfo.memberType == "Property"
+end
+
+local function isReadablePropertyMember(memberInfo)
+    if not isPropertyMember(memberInfo) then
+        return false
+    end
+    if memberInfo.tags.NotScriptable then
+        return false
+    end
+    if type(memberInfo.security) ~= "table" then
+        return false
+    end
+    return tostring(memberInfo.security.Read or "") == "None"
+end
+
+local function isWritablePropertyMember(memberInfo)
+    if not isPropertyMember(memberInfo) then
+        return false
+    end
+    if memberInfo.tags.ReadOnly or memberInfo.tags.NotScriptable then
+        return false
+    end
+    if type(memberInfo.security) ~= "table" then
+        return false
+    end
+    return tostring(memberInfo.security.Write or "") == "None"
+end
+
+local function isCallableMember(memberInfo)
+    return memberInfo ~= nil and (memberInfo.memberType == "Function" or memberInfo.memberType == "Callback")
+end
+
+local function isEventMember(memberInfo)
+    return memberInfo ~= nil and memberInfo.memberType == "Event"
+end
+
+local function isScriptableFunctionMember(memberInfo)
+    if not (isCallableMember(memberInfo) or isEventMember(memberInfo)) then
+        return false
+    end
+    if memberInfo.tags.NotScriptable then
+        return false
+    end
+    return tostring(memberInfo.security or "") == "None"
+end
 
 local _game = game
 if _game == nil and roblox ~= nil then
@@ -290,6 +348,9 @@ function serialize(value: any, depth: number?): string
         return '"' .. escaped .. '"'
     elseif t == "table" then
         local m = getmetatable(value)
+        if m and m._serialName then
+            return m._serialName
+        end
         if m and m._isProxy then
             markUsed(value)
             return m._name
@@ -346,142 +407,68 @@ end
 
 local makeProxy: (string) -> any
 
-local propertyTypes: { [string]: string } = {
-    Size = "Vector3", Position = "Vector3", CFrame = "CFrame",
-    Color = "Color3", Color3 = "Color3", BrickColor = "BrickColor",
-    Material = "EnumItem", Transparency = "number", Reflectance = "number",
-    Anchored = "boolean", CanCollide = "boolean", Locked = "boolean",
-    Name = "string", ClassName = "string", Parent = "Instance",
-    Source = "string", SourceAssetId = "number", Enabled = "boolean",
-    Value = "number", Text = "string", Font = "Font",
-    TextSize = "number", TextColor3 = "Color3", TextTransparency = "number",
-    BackgroundColor3 = "Color3", BackgroundTransparency = "number",
-    BorderSizePixel = "number", BorderColor3 = "Color3",
-    SizeConstraint = "EnumItem", PositionConstraint = "EnumItem",
-    Rotation = "number", ClipsDescendants = "boolean",
-    Active = "boolean", Visible = "boolean", ZIndex = "number",
-    LayoutOrder = "number", AutomaticSize = "EnumItem",
-    AnchorPoint = "UDim2", Offset = "UDim", Scale = "UDim",
-    TouchEnabled = "boolean", KeyboardEnabled = "boolean",
-    MouseEnabled = "boolean", GamepadEnabled = "boolean",
-    AccelerometerEnabled = "boolean", GyroscopeEnabled = "boolean",
-    VRDevice = "boolean", Ambient = "Color3",
-    Brightness = "number", TimeOfDay = "string", FogEnd = "number",
-    FogStart = "number", FogColor = "Color3", GlobalShadows = "boolean",
-    Outlines = "boolean", ShadowColor = "Color3",
-    Volume = "number", Pitch = "number", Looped = "boolean",
-    Playing = "boolean", TimeLength = "number", TimePosition = "number",
-    SoundId = "string", IsLoaded = "boolean",
-    WalkSpeed = "number", JumpPower = "number", JumpHeight = "number",
-    Health = "number", MaxHealth = "number", HipHeight = "number",
-    AutoRotate = "boolean", MoveDirection = "Vector3",
-    CameraMode = "EnumItem", CameraSubject = "Instance",
-    FieldOfView = "number", HeadScale = "number", ViewportSize = "Vector2",
-    ScreenOrientation = "EnumItem",
-    AbsolutePosition = "Vector3", AbsoluteSize = "Vector2", AbsoluteRotation = "number",
-    MouseIcon = "string", Icon = "string",
-    UserId = "number", AccountId = "string", Character = "Instance",
-    CharacterAppearanceId = "string", CharacterAppearance = "string",
-    Team = "Instance", TeamColor = "BrickColor", Neutral = "boolean",
-    Leadershipstats = "Instance",
-    RespawnTime = "number", Cameras = "Instance",
-    WalkToPoint = "Vector3", WalkToPart = "Instance",
-    PlatformStand = "boolean", Sit = "boolean",
-    MaxSlopeAngle = "number", HipHeightScales = "number",
-    CameraOffset = "Vector3", AutoJumpEnabled = "boolean",
-    DevCameraOcclusionMode = "EnumItem", DevComputerCameraMode = "EnumItem",
-    DevTouchCameraMode = "EnumItem",
-    DevEnableMouseLock = "boolean",
-    CameraMinZoomDistance = "number", CameraMaxZoomDistance = "number",
-    WalkSpeedScales = "number",
-    Mass = "number", CenterOfMass = "Vector3",
-    Inertia = "Vector3", Center = "Vector3",
-    ExtentsCFrame = "CFrame", ExtentsSize = "Vector3",
-    WorldCFrame = "CFrame", WorldPosition = "Vector3",
-    AssemblyLinearVelocity = "Vector3", AssemblyAngularVelocity = "Vector3",
-    AssemblyMass = "number", AssemblyCenterOfMass = "Vector3",
-    SleepInfo = "table",
-    CustomPhysicalProperties = "PhysicalProperties",
-    FrontSurface = "EnumItem", BackSurface = "EnumItem",
-    LeftSurface = "EnumItem", RightSurface = "EnumItem",
-    TopSurface = "EnumItem", BottomSurface = "EnumItem",
-    FrontSurfaceInput = "EnumItem", BackSurfaceInput = "EnumItem",
-    LeftSurfaceInput = "EnumItem", RightSurfaceInput = "EnumItem",
-    TopSurfaceInput = "EnumItem", BottomSurfaceInput = "EnumItem",
-    Friction = "number", Elasticity = "number", ElasticityWeight = "number",
-    FrictionWeight = "number",
-    Shape = "EnumItem", FormFactor = "EnumItem",
-    TweenInfo = "TweenInfo",
-    AmbientReverb = "EnumItem", DistanceFactor = "number",
-    DopplerScale = "number", EchoDoppler = "number",
-    RolloffScale = "number", ResampleFilter = "EnumItem",
-    InputDevice = "Instance", OutputDevice = "Instance",
-    SelectedObject = "Instance",
-    ResetPlayerGuiOnSpawn = "boolean",
-    FallenPartsDestroyHeight = "number",
-    Gravity = "number",
-    PlaceId = "number", JobId = "string", GameId = "number", CreatorId = "number",
-    Massless = "boolean", CanTouch = "boolean", CanQuery = "boolean",
-    JumpHeight = "number", MoveDirection = "Vector3",
-    OutdoorAmbient = "Color3", Ambient = "Color3", ShadowColor = "Color3",
-    DistributedGameTime = "number",
-    MembershipType = "EnumItem",
-    MouseIconEnabled = "boolean",
-    MouseBehavior = "EnumItem", ActuatorType = "EnumItem",
-    FilterType = "EnumItem", CollisionFidelity = "EnumItem",
-    FormFactor = "EnumItem", Flavor = "EnumItem",
-    DisplayDistanceType = "EnumItem", Stiffness = "number",
-    Damping = "number", FreeLength = "number",
-    LimitsEnabled = "boolean", MaxForce = "number",
-    MaxVelocity = "number", MotorMaxAcceleration = "number",
-    PrimaryAxisOnly = "boolean",
-    Attachment0 = "Instance", Attachment1 = "Instance",
-    Visible = "boolean", Color = "Color3",
-    Thickness = "number", Transparency = "number",
-    VREnabled = "boolean",
-    Status = "EnumItem", TextTruncate = "EnumItem",
-    Intensity = "number",
-    Archivable = "boolean",
-    TextStrokeTransparency = "number", TextStrokeColor3 = "Color3",
-    RichText = "boolean", MaxVisibleGraphemes = "number",
-    OpenTypeFeatures = "OpenTypeFeatures",
-    StatusText = "string", HealthDisplayType = "EnumItem",
-    RequiresNeck = "boolean", DisplayName = "string",
-    AudioDeviceInput = "Instance",
-    DistributedGameTime = "number",
-    Width = "number", Height = "number",
-    Character = "Instance", CharacterAppearance = "string",
-    CameraMode = "EnumItem", CameraSubject = "Instance",
-    headColor = "BrickColor", BodyColor = "BrickColor",
-    TextXAlignment = "EnumItem", TextYAlignment = "EnumItem",
-    TextTruncate = "EnumItem", TextDirection = "EnumItem",
-    VerticalAlignment = "EnumItem", HorizontalAlignment = "EnumItem",
-    ScaleType = "EnumItem", SliceScale = "number",
-    TileSize = "UDim2", SliceCenter = "Rect",
-    ImageRectOffset = "Vector2", ImageRectSize = "Vector2",
-    ResampleMode = "EnumItem", Scale9Corner = "EnumItem",
-    Content = "string", LinkColor = "Color3",
-    FontFace = "Font", LineHeight = "number",
-    TruncateAt = "EnumItem",
-    JumpHeight = "number", JumpPower = "number",
-    WalkSpeed = "number", HipHeight = "number",
-    Health = "number", MaxHealth = "number",
-    WalkToPoint = "Vector3", WalkToPart = "Instance",
-    AutoRotate = "boolean", PlatformStand = "boolean",
-    Sit = "boolean", MoveDirection = "Vector3",
-    CameraOffset = "Vector3",
-    MaxSlopeAngle = "number",
-    StateChanged = "RBXScriptSignal",
-    identity = "CFrame",
-    DistributedGameTime = "number",
-    PlaceholderText = "string", PlaceholderColor3 = "Color3",
-    Cursor = "string", Modal = "boolean",
-    ShowNativeInput = "boolean", TextBounds = "Vector2",
-    SelectionStart = "number", CursorPosition = "number",
-    MaximumVisibleGraphemes = "number",
-    BackgroundColor3 = "Color3", BorderColor3 = "Color3",
-    SizeConstraint = "EnumItem",
-}
+local function getPropertyRuntimeType(className: string?, memberName: string): string?
+    local memberInfo = resolveApiMember(className or "", memberName)
+    if not isPropertyMember(memberInfo) then
+        return nil
+    end
+    return getRuntimeTypeName(memberInfo.valueType)
+end
+
+local function makeTypedProxy(path: string, runtimeTypeName: string, apiType): any
+    local proxy = makeProxy(path)
+    local mt = getmetatable(proxy)
+    if runtimeTypeName == "EnumItem" then
+        mt._className = "EnumItem"
+        mt._ctorName = "EnumItem"
+    elseif runtimeTypeName == "Instance" then
+        if apiType and apiType.category == "Class" and type(apiType.name) == "string" and apiType.name ~= "" then
+            mt._className = apiType.name
+            mt._storedValues["ClassName"] = apiType.name
+            mt._setKeys["ClassName"] = true
+        else
+            mt._className = "Instance"
+        end
+    else
+        mt._ctorName = runtimeTypeName
+    end
+    return proxy
+end
+
+local function makeDefaultValueForRuntimeType(path: string, runtimeTypeName: string?, apiType)
+    if runtimeTypeName == "nil" then
+        return nil
+    end
+    if runtimeTypeName == "boolean" then
+        return false
+    end
+    if runtimeTypeName == "number" then
+        return 0
+    end
+    if runtimeTypeName == "string" then
+        return ""
+    end
+    if runtimeTypeName == "RBXScriptSignal" then
+        local signal = makeProxy(path)
+        local mt = getmetatable(signal)
+        mt._className = "RBXScriptSignal"
+        return signal
+    end
+    if runtimeTypeName ~= nil then
+        return makeTypedProxy(path, runtimeTypeName, apiType)
+    end
+    return nil
+end
+
+local function getMemberDefaultValue(className: string?, memberName: string, path: string)
+    local memberInfo = resolveApiMember(className or "", memberName)
+    if not isReadablePropertyMember(memberInfo) then
+        return nil, memberInfo
+    end
+
+    local runtimeTypeName = getRuntimeTypeName(memberInfo.valueType)
+    return makeDefaultValueForRuntimeType(path, runtimeTypeName, memberInfo.valueType), memberInfo
+end
 
 local propertyChangeCallbacks: { [string]: { (any) -> () } } = {}
 local eventConnections: { { proxy: any, eventName: string, callback: (any) -> () } } = {}
@@ -527,7 +514,7 @@ makeProxy = function(name: string): any
         _storedValues = storedValues,
         _setKeys = setKeys,
     }
-    local numericProps = {
+    local numericPseudoProps = {
         Magnitude = true, X = true, Y = true, Z = true,
         W = true, Width = true, Height = true, Depth = true,
         Value = true, Alpha = true, Beta = true,
@@ -569,152 +556,6 @@ makeProxy = function(name: string): any
         Threshold = true, BlurSize = true,
         MaxBlurSize = true, Radius = true,
     }
-    local booleanProps = {
-        Anchored = true, CanCollide = true, CanTouch = true, CanQuery = true,
-        Locked = true, Enabled = true, Visible = true, Active = true,
-        Looped = true, Playing = true, IsLoaded = true,
-        AutoRotate = true, PlatformStand = true, Sit = true, Neutral = true,
-        TouchEnabled = true, KeyboardEnabled = true, MouseEnabled = true,
-        GamepadEnabled = true, AccelerometerEnabled = true, GyroscopeEnabled = true,
-        VRDevice = true, AutoJumpEnabled = true, DevEnableMouseLock = true,
-        ClipsDescendants = true, GlobalShadows = true, Outlines = true,
-        Massless = true, Archivable = true, CastShadow = true,
-        AlwaysOnTop = true, Modal = true, ShowHideState = true,
-        Draggable = true, Selectable = true, RoundedScale = true,
-        RichText = true, IgnoreGuiInset = true, ResetOnSpawn = true,
-        DisplayOrder = true, TextScaled = true, TextWrapped = true,
-        BorderVisible = true, BorderScaleMode = true,
-        VREnabled = true, SuppressNativeAudio = true,
-        RequiresNeck = true, AutomaticScaling = true,
-        LegacyAudioClustering = true,
-        MouseIconEnabled = true, ModalEnabled = true,
-        VRRotationIntensity = true,
-    }
-    local stringProps = {
-        Name = true, ClassName = true, Source = true, Text = true,
-        SoundId = true, TimeOfDay = true, MouseIcon = true, Icon = true,
-        AccountId = true, CharacterAppearanceId = true, CharacterAppearance = true,
-        LocalId = true, FilePath = true, FilePathString = true,
-    }
-    local eventProps = {
-        Event = true,
-        Heartbeat = true, RenderStepped = true, Stepped = true,
-        Changed = true, ChildAdded = true, ChildRemoved = true,
-        DescendantAdded = true, DescendantRemoving = true,
-        AncestryChanged = true, AttributeChanged = true,
-        Idled = true, CharacterAdded = true, CharacterRemoving = true,
-        PlayerAdded = true, PlayerRemoving = true,
-        PlayerConnect = true, PlayerDisconnect = true,
-        MessageReceived = true, MessageSend = true,
-        Touched = true, TouchEnded = true, TouchMoved = true,
-        MouseButton1Down = true, MouseButton1Up = true,
-        MouseButton2Down = true, MouseButton2Up = true,
-        MouseEnter = true, MouseLeave = true, MouseMoved = true,
-        InputBegan = true, InputChanged = true, InputEnded = true,
-        FocusLost = true, FocusGained = true,
-        SelectionGained = true, SelectionLost = true,
-        Ready = true, Completed = true, Cancelled = true,
-        Fired = true, Triggered = true, TriggerEnded = true,
-        PromptShown = true, PromptClosed = true,
-        PromptButtonHovered = true, PromptTriggered = true,
-        PromptTriggerEnded = true,
-        OnServerEvent = true, OnClientEvent = true,
-        OnServerInvoke = true, OnClientInvoke = true,
-        Close = true, HttpRequest = true,
-        Jumping = true, StateChanged = true, Running = true,
-        FreeFalling = true, Landing = true,
-        Swimming = true, Climbing = true,
-        Seated = true, Died = true,
-        HealthChanged = true,
-    }
-    local functionProps = {
-        GetService = true, FindFirstChild = true, WaitForChild = true,
-        FindFirstDescendant = true, FindFirstChildWhichIsA = true,
-        FindFirstChildOfClass = true, FindFirstAncestor = true,
-        FindFirstAncestorOfClass = true, FindFirstAncestorWhichIsA = true,
-        IsA = true, isA = true, Clone = true, Destroy = true, Remove = true,
-        ClearAllChildren = true, GetChildren = true, GetDescendants = true,
-        GetFullName = true, GetDebugId = true,
-        GetPropertyChangedSignal = true,
-        Connect = true, connect = true, Once = true, Disconnect = true,
-        Wait = true, wait = true,
-        FireServer = true, FireClient = true, FireAllClients = true,
-        InvokeServer = true, InvokeClient = true,
-        Set = true, Get = true, Add = true, Increment = true,
-        Load = true, LoadAsync = true, SaveAsync = true, RemoveAsync = true,
-        GetAsync = true, SetAsync = true, IncrementAsync = true,
-        UpdateAsync = true,
-        GetProductInfo = true, PromptProductPurchase = true,
-        PromptGamePassPurchase = true, PromptPurchase = true,
-        GetGamePassInfo = true, PlayerOwnsAsset = true,
-        GetCharacterAppearanceInfoAsync = true,
-        GetMarketplaceProductInfo = true,
-        GetDeveloperProductsAsync = true,
-        GetUserGroupsAsync = true, GetGroupInfoAsync = true,
-        SendAsync = true, SendMessage = true,
-        Create = true, Play = true, Stop = true, Pause = true,
-        Resume = true, Cancel = true,
-        GetValue = true, Create = true,
-        TweenPosition = true, TweenSize = true, TweenSizeAndPosition = true,
-        CaptureController = true,
-        ClickButton1 = true, ClickButton2 = true,
-        GetTags = true, AddTag = true, RemoveTag = true, HasTag = true,
-        GetTagged = true, GetAllTags = true,
-        GetMemStats = true, GetGPUStats = true,
-        IsDescendantOf = true, IsAncestorOf = true,
-        GetDebugId = true,
-    }
-    local knownServiceNames = {
-        Players = true, Workspace = true, Lighting = true, ReplicatedStorage = true,
-        ServerStorage = true, ServerScriptService = true, StarterGui = true,
-        StarterPack = true, StarterPlayer = true, ReplicatedFirst = true,
-        RunService = true, TweenService = true, UserInputService = true,
-        ContextActionService = true, HttpService = true, MarketplaceService = true,
-        SoundService = true, TextService = true, GuiService = true,
-        CollectionService = true, MemStorageService = true,
-        LocalizationService = true, PhysicsService = true, HapticService = true,
-        AdService = true, DataStoreService = true, AchievementService = true,
-        AnimationClipProvider = true, BadgeService = true, Chat = true,
-        ContentProvider = true, CoreGui = true, Debris = true,
-        GamePassService = true, GroupService = true, LogService = true,
-        NotificationService = true, PathfindingService = true,
-        PointsService = true, SelectionService = true, SocialService = true,
-        Stats = true, Teams = true, TeleportService = true, TextChatService = true,
-        VirtualInputManager = true, VirtualUser = true, VoiceChatService = true,
-        AnalyticsService = true, ProximityPromptService = true,
-        MaterialService = true, AssetService = true,
-        AvatarEditorService = true, AvatarCreationService = true,
-        BrowserService = true, BulkImportService = true,
-        CacheStoreService = true, CaptureService = true,
-        ConfigurationService = true, CookieStoreService = true,
-        DebuggablePlugin = true, DeviceService = true,
-        DraftsService = true, EditorService = true,
-        EngagementService = true, ExperienceService = true,
-        FriendService = true, GamepadService = true,
-        GroupStoreService = true, HotelService = true,
-        HubService = true, InternalService = true,
-        LanguageService = true, LegacyChatService = true,
-        LocalStorageService = true, LoginService = true,
-        LuauScriptManagerService = true, MarketService = true,
-        MessagingService = true, MouseService = true,
-        NetworkClient = true, NetworkServer = true,
-        OAuthService = true, PersistentStorageService = true,
-        PlatformService = true, PluginService = true,
-        PresenceService = true, PublishService = true,
-        RbxAnalyticsService = true, RibbonNotificationService = true,
-        RopostService = true, RubberbandingService = true,
-        RuntimeDiscoveryService = true, ScriptContext = true,
-        SearchService = true, ServerNetwork = true,
-        ServiceManager = true, SessionService = true,
-        SharedTableRegistry = true, SubscriptionService = true,
-        SuggestionService = true, TestService = true,
-        ThirdPartyUserService = true, ThumbnailService = true,
-        TimerService = true, TouchInputService = true,
-        UniTask = true, UnvalidatedAssetService = true,
-        UserService = true, VideoCaptureService = true,
-        VideoService = true, VRService = true, WebService = true,
-        Workspace = true, EncoderService = true, EncodingService = true,
-    }
     mt.__index = function(t, k)
         tick()
         local ks = tostring(k)
@@ -727,7 +568,7 @@ makeProxy = function(name: string): any
         if ks == "Parent" and destroyedInstances[name] then
             return nil
         end
-        if mt._className == "DataModel" and knownServiceNames[ks] and serviceCache[ks] then
+        if mt._className == "DataModel" and isApiServiceClass(ks) and serviceCache[ks] then
             return serviceCache[ks]
         end
         if mt._className == "Players" and ks == "LocalPlayer" then
@@ -759,12 +600,26 @@ makeProxy = function(name: string): any
         if ks == "ClassName" and mt._className then
             return mt._className
         end
-        if functionProps[ks] then
+        local memberInfo = resolveApiMember(mt._className or "", ks)
+        if isScriptableFunctionMember(memberInfo) then
             if not children[ks] then
                 local child = makeProxy(name .. "." .. ks)
                 local cmt = getmetatable(child)
                 cmt._parent = t
                 cmt._fieldName = ks
+                cmt._memberType = memberInfo.memberType
+                children[ks] = child
+            end
+            return children[ks]
+        end
+        if isEventMember(memberInfo) then
+            if not children[ks] then
+                local child = makeProxy(name .. "." .. ks)
+                local cmt = getmetatable(child)
+                cmt._parent = t
+                cmt._fieldName = ks
+                cmt._memberType = memberInfo.memberType
+                cmt._signalForEvent = { proxy = t, eventName = ks }
                 children[ks] = child
             end
             return children[ks]
@@ -895,45 +750,34 @@ makeProxy = function(name: string): any
             local val = mt._ctorArgs[1]
             if type(val) == "number" then return val end
         end
-        if numericProps[ks] then
+        if numericPseudoProps[ks] then
             return 0
         end
-        if booleanProps[ks] then
-            return false
+
+        local memberDefaultValue = nil
+        memberDefaultValue, memberInfo = getMemberDefaultValue(mt._className or "", ks, name .. "." .. ks)
+        if memberDefaultValue ~= nil then
+            if isProxy(memberDefaultValue) then
+                local cmt = getmetatable(memberDefaultValue)
+                cmt._parent = t
+                cmt._fieldName = ks
+            end
+            children[ks] = memberDefaultValue
+            return memberDefaultValue
         end
-        if stringProps[ks] then
-            return ""
+        if memberInfo ~= nil then
+            return nil
         end
+
         if not children[ks] then
             local child = makeProxy(name .. "." .. ks)
             local cmt = getmetatable(child)
             cmt._parent = t
             cmt._fieldName = ks
-            if eventProps[ks] then
-                cmt._signalForEvent = { proxy = t, eventName = ks }
-            end
             children[ks] = child
         end
         return children[ks]
     end
-    local readonlyProps = {
-        PlaybackLoudness = true,
-        AbsolutePosition = true, AbsoluteSize = true, AbsoluteRotation = true,
-        ClassName = true, SourceAssetId = true,
-        IsLoaded = true, TimeLength = true, TimePosition = true,
-        Mass = true, CenterOfMass = true, Inertia = true,
-        ExtentsCFrame = true, ExtentsSize = true,
-        WorldCFrame = true, WorldPosition = true,
-        UserId = true, AccountAge = true, AccountId = true,
-        ViewportSize = true, ScreenOrientation = true,
-        Memory = true, GpuMemory = true, Cpu = true, OsPlatformId = true,
-    }
-    local readonlyPropsByClassName = {
-        DataModel = { ["AssemblyLinearVelocity"] = true, ["AssemblyAngularVelocity"] = true, ["AssemblyMass"] = true, ["AssemblyCenterOfMass"] = true, ["Parent"] = true },
-        Workspace = { ["Parent"] = true },
-        Part = {},
-        Sound = { ["PlaybackLoudness"] = true },
-    }
     local positiveNumberProps = {
         FieldOfView = true, WalkSpeed = true, JumpPower = true,
         MaxHealth = true, Health = true, TextSize = true,
@@ -942,18 +786,12 @@ makeProxy = function(name: string): any
         MaxForce = true, Force = true, Torque = true,
         MaxSpeed = true, MaxThrust = true,
     }
-    local readonlyEventProps = {
-        Heartbeat = true, RenderStepped = true, Stepped = true,
-    }
     mt.__newindex = function(t, k, v)
         tick()
         local ks = tostring(k)
         local cls = mt._className or ""
-        if readonlyEventProps[ks] and (cls == "RunService" or cls == "DataModel") then
-            error("attempt to set a read-only property '" .. ks .. "'", 2)
-        end
-        local clsReadonly = readonlyPropsByClassName[cls] or {}
-        if readonlyProps[ks] or clsReadonly[ks] then
+        local memberInfo = resolveApiMember(cls, ks)
+        if memberInfo and not isWritablePropertyMember(memberInfo) then
             error("attempt to set a read-only property '" .. ks .. "'", 2)
         end
         if positiveNumberProps[ks] and type(v) == "number" and v < 0 then
@@ -1076,6 +914,10 @@ makeProxy = function(name: string): any
                 emit(string.format('local %s = %s:GetService(%s)', serviceName, parentName, serialize(firstArg)))
                 error("GetService: DebuggerManager not available", 0)
             end
+            if not isApiServiceClass(serviceName) then
+                emit(string.format('local %s = %s:GetService(%s)', serviceName, parentName, serialize(firstArg)))
+                error("GetService: " .. serviceName .. " is not a valid service", 0)
+            end
             if serviceCache[serviceName] then
                 emit(string.format('local %s = %s:GetService(%s)', serviceName, parentName, serialize(firstArg)))
                 return serviceCache[serviceName]
@@ -1094,25 +936,8 @@ makeProxy = function(name: string): any
             local parentName = proxyName(parent)
             local parentMt = getmetatable(parent)
             local cls = parentMt and parentMt._className or ""
-            local knownProps = {
-                Size = true, Position = true, CFrame = true, Color = true,
-                Name = true, Parent = true, Anchored = true, CanCollide = true,
-                Transparency = true, Reflectance = true, Material = true,
-                BrickColor = true, ClassName = true, Enabled = true, Visible = true,
-                Text = true, Font = true, TextSize = true, TextColor3 = true,
-                BackgroundColor3 = true, BackgroundTransparency = true,
-                Value = true, Health = true, MaxHealth = true, WalkSpeed = true,
-                JumpPower = true, HipHeight = true, FieldOfView = true,
-                Brightness = true, Volume = true, Pitch = true, Looped = true,
-                Source = true, AssemblyLinearVelocity = true,
-                PlaybackLoudness = true, TouchEnabled = true, KeyboardEnabled = true,
-                MouseEnabled = true, GamepadEnabled = true,
-                HeadScale = true, CameraMode = true,
-                AutoRotate = true, PlatformStand = true, Sit = true,
-                Character = true, Team = true, TeamColor = true, Neutral = true,
-                UserId = true, AccountAge = true,
-            }
-            if not knownProps[firstArg] then
+            local memberInfo = resolveApiMember(cls, firstArg)
+            if not isPropertyMember(memberInfo) then
                 emit(string.format('local %s = %s:GetPropertyChangedSignal(%s)', retName, parentName, serialize(firstArg)))
                 error("GetPropertyChangedSignal: '" .. firstArg .. "' is not a valid property", 0)
             end
@@ -1296,7 +1121,7 @@ makeProxy = function(name: string): any
                 emit(string.format('%s:%s()', parentName, fieldName))
                 error("Cannot destroy " .. parentClassName, 0)
             end
-            if parentMt and parentMt._className and knownServiceNames[parentMt._className] then
+            if parentMt and parentMt._className and isApiServiceClass(parentMt._className) then
                 emit(string.format('%s:%s()', parentName, fieldName))
                 error("Cannot destroy service " .. parentMt._className, 0)
             end
@@ -1337,14 +1162,15 @@ makeProxy = function(name: string): any
 
         if isMethod and fieldName == "Create" and parent then
             local parentName = proxyName(parent)
+            local parentMt = getmetatable(parent)
+            local parentClassName = parentMt and parentMt._className or ""
             emit(string.format('local %s = %s:Create(%s)', retName, parentName, table.concat(parts, ", ")))
             local goal = args[startIdx + 2]
             if type(goal) == "table" then
                 for k, v in pairs(goal) do
                     if type(k) == "string" then
-                        local expected = propertyTypes[k]
+                        local expected = getPropertyRuntimeType(parentClassName, k)
                         if expected then
-                            local actual = typeof(v)
                             local basicType = type(v)
                             if basicType == "string" and expected ~= "string" then
                                 error("Create: invalid property type for '" .. k .. "'", 0)
@@ -1352,6 +1178,13 @@ makeProxy = function(name: string): any
                                 error("Create: invalid property type for '" .. k .. "'", 0)
                             elseif basicType == "number" and expected ~= "number" then
                                 error("Create: invalid property type for '" .. k .. "'", 0)
+                            elseif isProxy(v) and expected == "Instance" then
+                                local valueClassName = getmetatable(v)._className
+                                local memberInfo = resolveApiMember(parentClassName, k)
+                                local valueType = memberInfo and memberInfo.valueType
+                                if valueType and valueType.category == "Class" and type(valueType.name) == "string" and valueClassName and not classIsA(valueClassName, valueType.name) then
+                                    error("Create: invalid property type for '" .. k .. "'", 0)
+                                end
                             end
                         end
                     end
@@ -1590,7 +1423,7 @@ makeProxy = function(name: string): any
             emit(string.format('local %s = %s:IsA(%s)', retName, parentName, serialize(firstArg)))
             local parentMt = getmetatable(parent)
             local cls = parentMt and parentMt._className or ""
-            if type(firstArg) == "string" then return cls == firstArg end
+            if type(firstArg) == "string" then return classIsA(cls, firstArg) end
             return false
         end
 
@@ -1905,8 +1738,16 @@ local function createEnv()
         clone = function(t) return t end,
     })
     env.coroutine = copyLib(coroutine)
-    local clockVal = 0
-    env.os = nil
+    env.os = setmetatable({
+        time = os.time,
+        date = os.date,
+        clock = os.clock,
+        difftime = os.difftime,
+    }, {
+        _serialName = "os",
+        __newindex = function() error("attempt to write to read-only library table", 2) end,
+        __tostring = function() return "table: 0x" .. string.format("%x", math.random(1048576, 1099511627776)) end,
+    })
     env.debug = nil
     env.io = nil
     local function wrapPcall(f, ...)
@@ -1995,8 +1836,13 @@ local function createEnv()
             if m and m._isProxy then
                 if m._ctorName then return m._ctorName end
                 local fieldName = m._fieldName
-                if fieldName and propertyTypes[fieldName] then
-                    return propertyTypes[fieldName]
+                local parent = m._parent
+                local parentMt = parent and getmetatable(parent) or nil
+                if fieldName and parentMt and parentMt._className then
+                    local runtimeTypeName = getPropertyRuntimeType(parentMt._className, fieldName)
+                    if runtimeTypeName then
+                        return runtimeTypeName
+                    end
                 end
                 if m._signalForEvent or m._signalForProperty then
                     return "RBXScriptSignal"
@@ -2014,48 +1860,18 @@ local function createEnv()
         end
         return t
     end
-    local functionTypeNames = {
-        GetService = true, FindFirstChild = true, WaitForChild = true,
-        FindFirstDescendant = true, FindFirstChildWhichIsA = true,
-        FindFirstChildOfClass = true, FindFirstAncestor = true,
-        FindFirstAncestorOfClass = true, FindFirstAncestorWhichIsA = true,
-        IsA = true, isA = true, Clone = true, Destroy = true, Remove = true,
-        ClearAllChildren = true, GetChildren = true, GetDescendants = true,
-        GetFullName = true, GetDebugId = true,
-        GetPropertyChangedSignal = true,
-        Connect = true, connect = true, Once = true, Disconnect = true,
-        Wait = true, wait = true,
-        FireServer = true, FireClient = true, FireAllClients = true,
-        InvokeServer = true, InvokeClient = true,
-        Set = true, Get = true, Add = true, Increment = true,
-        Load = true, LoadAsync = true, SaveAsync = true, RemoveAsync = true,
-        GetAsync = true, SetAsync = true, IncrementAsync = true,
-        UpdateAsync = true,
-        GetProductInfo = true, PromptProductPurchase = true,
-        PromptGamePassPurchase = true, PromptPurchase = true,
-        GetGamePassInfo = true, PlayerOwnsAsset = true,
-        GetCharacterAppearanceInfoAsync = true,
-        GetMarketplaceProductInfo = true,
-        GetDeveloperProductsAsync = true,
-        GetUserGroupsAsync = true, GetGroupInfoAsync = true,
-        SendAsync = true, SendMessage = true,
-        Create = true, Play = true, Stop = true, Pause = true,
-        Resume = true, Cancel = true,
-        GetValue = true,
-        TweenPosition = true, TweenSize = true, TweenSizeAndPosition = true,
-        CaptureController = true,
-        ClickButton1 = true, ClickButton2 = true,
-        GetTags = true, AddTag = true, RemoveTag = true, HasTag = true,
-        GetTagged = true, GetAllTags = true,
-        GetMemStats = true, GetGPUStats = true,
-        IsDescendantOf = true, IsAncestorOf = true,
-    }
     env.type = function(x)
         local t = type(x)
         if t == "table" then
             local m = getmetatable(x)
             if m and m._isProxy then
-                if m._fieldName and functionTypeNames[m._fieldName] then
+                local parent = m._parent
+                local parentMt = parent and getmetatable(parent) or nil
+                local memberInfo = nil
+                if m._fieldName and parentMt and parentMt._className then
+                    memberInfo = resolveApiMember(parentMt._className, m._fieldName)
+                end
+                if isCallableMember(memberInfo) then
                     return "function"
                 end
                 return "userdata"
@@ -2122,7 +1938,7 @@ local function createEnv()
         if type(level) == "number" and level > 100 then return nil end
         return env
     end
-    env.version = function() return "0.0.0" end
+    env.version = function() return "0.728.0.7280895" end
     env._VERSION = "Luau"
     env.loadstring = nil
     env.load = nil
@@ -2130,13 +1946,14 @@ local function createEnv()
     env.game = spyInstance("DataModel", "game", true)
     env.Game = env.game
     local gameMt = getmetatable(env.game)
-    gameMt._storedValues["PlaceId"] = 1234567890
+    gameMt._storedValues["PlaceId"] = math.random(100000000, 2147483646)
     gameMt._setKeys["PlaceId"] = true
-    gameMt._storedValues["JobId"] = "job-id-12345"
+    local function randHex(n) local s = "" for _=1,n do s = s .. string.format("%x", math.random(0, 15)) end return s end
+    gameMt._storedValues["JobId"] = randHex(8) .. "-" .. randHex(4) .. "-" .. randHex(4) .. "-" .. randHex(4) .. "-" .. randHex(12)
     gameMt._setKeys["JobId"] = true
-    gameMt._storedValues["GameId"] = 9876543210
+    gameMt._storedValues["GameId"] = math.random(100000000, 2147483646)
     gameMt._setKeys["GameId"] = true
-    gameMt._storedValues["CreatorId"] = 123456
+    gameMt._storedValues["CreatorId"] = math.random(1, 999999)
     gameMt._setKeys["CreatorId"] = true
     env.workspace = spyInstance("Workspace", "workspace", true)
     env.Workspace = env.workspace
@@ -2168,88 +1985,11 @@ local function createEnv()
     env.Instance = setmetatable({
         new = function(c)
             local cls = tostring(c or "Instance")
-            local knownClasses = {
-                Part = true, Model = true, Frame = true, TextLabel = true,
-                TextButton = true, ImageButton = true, ImageLabel = true,
-                TextBox = true, ScrollBar = true, ScrollingFrame = true,
-                ScreenGui = true, BillboardGui = true, SurfaceGui = true,
-                Folder = true, LocalScript = true, Script = true, ModuleScript = true,
-                Sound = true, SoundGroup = true, Animation = true, AnimationController = true,
-                Humanoid = true, HumanoidDescription = true,
-                Weld = true, WeldConstraint = true, Motor6D = true,
-                RemoteEvent = true, RemoteFunction = true, BindableEvent = true, BindableFunction = true,
-                ValueBase = true, IntValue = true, NumberValue = true, StringValue = true,
-                BoolValue = true, ObjectValue = true, CFrameValue = true,
-                Vector3Value = true, Color3Value = true, BrickColorValue = true,
-                RayValue = true, BinaryStringValue = true,
-                Camera = true, Workspace = true, Lighting = true,
-                Player = true, Players = true, StarterGui = true, StarterPack = true,
-                StarterPlayer = true, StarterPlayerScripts = true, StarterCharacterScripts = true,
-                ReplicatedStorage = true, ServerStorage = true, ServerScriptService = true,
-                ReplicatedFirst = true, RunService = true, TweenService = true,
-                UserInputService = true, ContextActionService = true,
-                HttpService = true, MarketplaceService = true, SoundService = true,
-                TextService = true, GuiService = true,
-                CollectionService = true, MemStorageService = true,
-                LocalizationService = true, LocalizationTable = true,
-                PhysicsService = true, HapticService = true, AdService = true,
-                DataStoreService = true, AchievementService = true,
-                AnimationClipProvider = true, AvatarEditorService = true,
-                BadgeService = true, Chat = true, ContentProvider = true,
-                CoreGui = true, Debris = true, GamePassService = true, GroupService = true,
-                LogService = true, NotificationService = true, PathfindingService = true,
-                PointsService = true, SelectionService = true,
-                SocialService = true, Stats = true, Teams = true,
-                TeleportService = true, TextChatService = true,
-                VirtualInputManager = true, VirtualUser = true,
-                VoiceChatService = true, AnalyticsService = true,
-                ProximityPrompt = true, ProximityPromptService = true,
-                ClickDetector = true, Constraint = true,
-                ForceField = true, Sparkles = true, Smoke = true, Fire = true,
-                Explosion = true, ParticleEmitter = true, Trail = true,
-                Beam = true, BlockMesh = true, CylinderMesh = true, SpecialMesh = true,
-                Decal = true, Texture = true,
-                Seat = true, VehicleSeat = true,
-                TrussPart = true, CornerWedgePart = true, WedgePart = true,
-                MeshPart = true, UnionOperation = true, NegateOperation = true, BasePart = true,
-                Part = true, SpawnLocation = true,
-                BloomEffect = true, BlurEffect = true, SunRaysEffect = true,
-                DepthOfFieldEffect = true, ColorCorrectionEffect = true,
-                Atmosphere = true, Sky = true,
-                LocalScript = true, Script = true, ModuleScript = true,
-                Frame = true, TextLabel = true, TextButton = true,
-                ImageButton = true, ImageLabel = true, TextBox = true,
-                ScrollingFrame = true, CanvasGroup = true, UIListLayout = true,
-                UIGridLayout = true, UIPageLayout = true, UIPadding = true,
-                UISizeConstraint = true, UIAspectRatioConstraint = true,
-                UIScale = true, UIGradient = true, UICorner = true,
-                UIStroke = true, UIFlexItem = true,
-                ScreenGui = true, BillboardGui = true, SurfaceGui = true,
-                Folder = true, Configuration = true,
-                Weld = true, WeldConstraint = true, Motor6D = true,
-                Snap = true, VelocityMotor = true, Glue = true,
-                Animation = true, AnimationController = true, Animator = true,
-                Humanoid = true, HumanoidDescription = true,
-                Sound = true, SoundGroup = true,
-                RemoteEvent = true, RemoteFunction = true,
-                BindableEvent = true, BindableFunction = true,
-                IntValue = true, NumberValue = true, StringValue = true,
-                BoolValue = true, ObjectValue = true, CFrameValue = true,
-                Vector3Value = true, Color3Value = true, BrickColorValue = true,
-                RayValue = true, BinaryStringValue = true,
-                ClickDetector = true, ProximityPrompt = true,
-                TouchTransmitter = true,
-                ParallelRampartnerServiceMock = true,
-            }
-            if not knownClasses[cls] then
-                local v = genVar("inst")
-                emit(string.format('local %s = Instance.new("%s")', v, cls))
-                local proxy = makeProxy(v)
-                local mt = getmetatable(proxy)
-                mt._className = cls
-                mt._storedValues["ClassName"] = cls
-                mt._setKeys["ClassName"] = true
-                return proxy
+            if not getApiClassInfo(cls) then
+                error("Instance.new: invalid class '" .. cls .. "'", 2)
+            end
+            if not isApiCreatableClass(cls) then
+                error("Instance.new: cannot create class '" .. cls .. "'", 2)
             end
             local v = genVar("inst")
             emit(string.format('local %s = Instance.new("%s")', v, cls))
@@ -2452,7 +2192,11 @@ local function createEnv()
         fromstring = function(s) return { _data = s or "" } end,
         tostring = function(b) return b and b._data or "" end,
         len = function(b) return b and #(b._data) or 0 end,
-    }, { __index = function() return function() end end })
+    }, {
+        _serialName = "buffer",
+        __index = function() return function() end end,
+        __tostring = function() return "table: 0x" .. string.format("%x", math.random(1048576, 1099511627776)) end,
+    })
     env.Buffer = env.buffer
 
     local YIELD_BUDGET = 1
@@ -2673,10 +2417,18 @@ local function createEnv()
     env.zstddecompress = function(s) return s end
     env.qrcode = function() return "" end
     env.newproxy = function() return setmetatable({}, {}) end
+    env.getgc = function() return {} end
     env.gcinfo = function() return 0 end
     env.collectgarbage = function() return 0 end
     env.require = nil
-    env.shared = env
+    env.shared = setmetatable({}, {
+        _serialName = "shared",
+        __index = function(_, k) return env[k] end,
+        __newindex = function(t, k, v) env[k] = v; rawset(t, k, v) end,
+        __tostring = function() return "table: 0x" .. string.format("%x", math.random(1048576, 1099511627776)) end,
+        __pairs = function() return pairs(env) end,
+        __len = function() return 0 end,
+    })
     env.dofile = nil
     env.package = nil
 
@@ -2687,7 +2439,6 @@ local function createEnv()
         load = true,
         loadstring = true,
         loadfile = true,
-        os = true,
         debug = true,
         io = true,
     }
@@ -2808,7 +2559,6 @@ end
 local DARKLUA_BIN = (process.env.DARKLUA_BIN or "darklua") :: string
 local SANDBOX_PRELUDE = table.concat({
     "local io = nil",
-    "local os = nil",
     "local debug = nil",
     "local load = nil",
     "local loadstring = nil",
