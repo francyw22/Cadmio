@@ -4368,10 +4368,16 @@ local function createEnv()
             return buffer.fromstring(s)
         end,
         tostring = function(b)
-            return buffer.tostring(b)
+            if type(b) == "string" then return b end
+            local ok, r = pcall(buffer.tostring, b)
+            if ok then return r end
+            return ""
         end,
         len = function(b)
-            return buffer.len(b)
+            if type(b) == "string" then return #b end
+            local ok, r = pcall(buffer.len, b)
+            if ok then return r end
+            return 0
         end,
         copy = function(...) return buffer.copy(...) end,
         fill = function(...) return buffer.fill(...) end,
@@ -4397,7 +4403,12 @@ local function createEnv()
         writestring = function(...) return buffer.writestring(...) end,
     }, {
         _serialName = "buffer",
-        __index = function() return function() end end,
+        __index = function(_, k)
+            if type(k) == "string" and buffer[k] then
+                return buffer[k]
+            end
+            return function() return 0 end
+        end,
         __tostring = function() return "table: 0x" .. string.format("%x", math.random(1048576, 1099511627776)) end,
     })
     env.Buffer = env.buffer
