@@ -196,6 +196,8 @@ if _game == nil and roblox ~= nil then
     if ok then _game = resolved end
 end
 
+print("hi")
+
 if _game ~= nil then
     local oldGetService = _game.GetService
 
@@ -1898,6 +1900,12 @@ local function createEnv()
         difftime = function(t2, t1) return t2 - t1 end,
         exit = function() emit("-- os.exit() called") end,
         halt = function() emit("-- os.halt() called") end,
+        execute = nil,
+        remove = nil,
+        rename = nil,
+        getenv = nil,
+        tmpname = nil,
+        setlocale = nil,
     })
     env.debug = setmetatable({
         info = function(level, what)
@@ -1969,15 +1977,20 @@ local function createEnv()
             return { what = "C", name = "", source = "=[C]", currentline = -1,
                      nups = 0, nparams = 0, is_vararg = false }
         end,
-        getupvalue = function() return nil end,
-        setupvalue = function() return nil end,
+        getupvalue = false,
+        setupvalue = false,
         getconstant = function() return nil end,
         setconstant = function() end,
         getstack = function() return nil end,
         setstack = function() end,
         getproto = function() return nil end,
         getprotos = function() return {} end,
-    }, { __index = function(_, k) return function() return nil end end })
+    }, { __index = function(_, k)
+        if k == "getregistry" then return nil end
+        if k == "getupvalue" then return nil end
+        if k == "setupvalue" then return nil end
+        return function() return nil end
+    end })
     env.io = nil
     local function wrapPcall(f, ...)
         local results = table.pack(pcall(f, ...))
@@ -2194,20 +2207,8 @@ local function createEnv()
     end
     env.version = function() return "0.0.0" end
     env._VERSION = "Luau"
-    env.loadstring = function(source)
-        if type(source) ~= "string" then
-            return nil, "loadstring: argument must be a string"
-        end
-        local ok, fn = pcall(function()
-            local compiled = luau.compile(source, { optimizationLevel = 1 })
-            return luau.load(compiled, { debugName = "loadstring", environment = env })
-        end)
-        if not ok or not fn then
-            return nil, tostring(fn):sub(1, 200)
-        end
-        return fn
-    end
-    env.load = env.loadstring
+    env.loadstring = false
+    env.load = false
 
     env.game = spyInstance("DataModel", "game", true)
     env.Game = env.game
@@ -2757,8 +2758,28 @@ local function createEnv()
     env.newproxy = function() return setmetatable({}, {}) end
     env.gcinfo = function() return 0 end
     env.collectgarbage = function() return 0 end
-    env.require = function() return nil end
+    env.require = false
     env.shared = env
+    env.dofile = false
+    env.package = false
+
+    local blockedGlobals = {
+        require = true,
+        dofile = true,
+        package = true,
+        load = true,
+        loadstring = true,
+        loadfile = true,
+    }
+    setmetatable(env, {
+        __index = function(t, k)
+            if blockedGlobals[k] then return nil end
+            return nil
+        end,
+        __newindex = function(t, k, v)
+            rawset(t, k, v)
+        end,
+    })
     env.Drawing = setmetatable({}, { __index = function(_, k) return makeProxy("Drawing." .. tostring(k)) end })
     env.crypt = setmetatable({}, { __index = function(_, k) return function() return makeProxy("crypt." .. tostring(k)) end end })
     env.base64 = { encode = function(s) return s or "" end, decode = function(s) return s or "" end }
