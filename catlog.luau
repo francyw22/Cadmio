@@ -351,7 +351,7 @@ local opCount = 0
 local OP_BUDGET = 2000000
 local BUDGET_ERROR = "__OP_BUDGET_EXCEEDED__"
 
-local PARTIAL_DUMP_PATH = "/home/z/my-project/scripts/run/partial.lua"
+local PARTIAL_DUMP_PATH = "idk/idk/idk"
 local lastFlushCount = 0
 local function flushPartial()
     if #lines == lastFlushCount then return end
