@@ -436,8 +436,10 @@ local function isScriptableFunctionMember(memberInfo)
     if memberInfo.tags.NotScriptable then
         return false
     end
-    return tostring(memberInfo.security or "") == "None"
+    return true
 end
+
+local makeProxy: (string) -> any
 
 local _game = game
 if _game == nil and roblox ~= nil then
@@ -449,20 +451,6 @@ if _game ~= nil then
     local oldGetService = _game.GetService
 
     _game.GetService = function(self, serviceName)
-        if serviceName == "VoiceChatService" then
-            return {
-                joinVoice = function() end,
-                rejoinVoice = function() end,
-                leaveVoice = function() end
-            }
-        end
-        if serviceName == "SoundService" then
-            return {
-                GetAudioInstances = function() return {} end,
-                GetInputDevices = function() return {} end,
-                GetOutputDevices = function() return {} end
-            }
-        end
         return oldGetService(self, serviceName)
     end
 end
@@ -533,10 +521,33 @@ local function makeDataProxy(ctorName, ctorArgs, name)
                 return false
             end,
             __tostring = function(a)
+                local cn = rawget(a, "_ctorName") or ctorName
+                local args = rawget(a, "_ctorArgs") or {}
+                if cn == "Vector3" then
+                    return tostring(args[1] or 0) .. ", " .. tostring(args[2] or 0) .. ", " .. tostring(args[3] or 0)
+                elseif cn == "Vector2" then
+                    return tostring(args[1] or 0) .. ", " .. tostring(args[2] or 0)
+                elseif cn == "Color3" then
+                    return tostring(args[1] or 0) .. ", " .. tostring(args[2] or 0) .. ", " .. tostring(args[3] or 0)
+                elseif cn == "UDim2" then
+                    return "{" .. tostring(args[1] or 0) .. ", " .. tostring(args[2] or 0) .. "}, {" .. tostring(args[3] or 0) .. ", " .. tostring(args[4] or 0) .. "}"
+                end
                 return rawget(a, "_name") or ctorName
             end,
             __index = function(a, k)
                 local args = rawget(a, "_ctorArgs") or {}
+                local cn = rawget(a, "_ctorName") or ctorName
+                if cn == "CFrame" then
+                    if k == "Position" then
+                        return makeDataProxy("Vector3", { args[1] or 0, args[2] or 0, args[3] or 0 }, (rawget(a,"_name") or "cf")..".Position")
+                    end
+                    if k == "X" then return args[1] or 0 end
+                    if k == "Y" then return args[2] or 0 end
+                    if k == "Z" then return args[3] or 0 end
+                    if k == "LookVector" then return makeDataProxy("Vector3", {0, 0, -1}, "LookVector") end
+                    if k == "RightVector" then return makeDataProxy("Vector3", {1, 0, 0}, "RightVector") end
+                    if k == "UpVector" then return makeDataProxy("Vector3", {0, 1, 0}, "UpVector") end
+                end
                 if k == "X" or k == "x" then return args[1] or 0 end
                 if k == "Y" or k == "y" then return args[2] or 0 end
                 if k == "Z" or k == "z" then return args[3] or 0 end
@@ -544,11 +555,99 @@ local function makeDataProxy(ctorName, ctorArgs, name)
                     local x, y, z = args[1] or 0, args[2] or 0, args[3] or 0
                     return math.sqrt(x*x + y*y + z*z)
                 end
+                if k == "Unit" then
+                    local x, y, z = args[1] or 0, args[2] or 0, args[3] or 0
+                    local mag = math.sqrt(x*x + y*y + z*z)
+                    if mag == 0 then mag = 1 end
+                    return makeDataProxy(ctorName, {x/mag, y/mag, z/mag}, (rawget(a,"_name") or "v")..".Unit")
+                end
+                if k == "R" then return args[1] or 0 end
+                if k == "G" then return args[2] or 0 end
+                if k == "B" then return args[3] or 0 end
+                if k == "Scale" then return args[1] or 0 end
+                if k == "Offset" then return args[2] or 0 end
+                if k == "Width" then return args[1] or 0 end
+                if k == "Height" then return args[2] or 0 end
+                local DATA_METHODS = { Lerp = true, Dot = true, Cross = true, Angle = true, FuzzyEq = true, Abs = true, ToHSV = true, ToHex = true, ToRGB = true, ToOrientation = true, Inverse = true, ToWorldSpace = true, ToObjectSpace = true, PointToObjectSpace = true }
+                if DATA_METHODS[k] then
+                    return function(self, ...)
+                        local retName = genVar("v")
+                        local parentName = rawget(a, "_name") or ctorName
+                        local args = {...}
+                        local parts = {}
+                        for i = 1, select("#", ...) do
+                            local arg = args[i]
+                            if type(arg) == "table" and rawget(arg, "_name") then
+                                table.insert(parts, rawget(arg, "_name"))
+                            elseif type(arg) == "string" then
+                                table.insert(parts, '"' .. arg .. '"')
+                            else
+                                table.insert(parts, tostring(arg))
+                            end
+                        end
+                        emit(string.format('local %s = %s:%s(%s)', retName, parentName, k, table.concat(parts, ", ")))
+                        if k == "Lerp" then
+                            local proxy = makeProxy(retName)
+                            local pmt = getmetatable(proxy)
+                            pmt._ctorName = ctorName
+                            return proxy
+                        elseif k == "Cross" then
+                            local proxy = makeProxy(retName)
+                            local pmt = getmetatable(proxy)
+                            pmt._ctorName = "Vector3"
+                            return proxy
+                        elseif k == "Dot" or k == "Angle" then
+                            return 0
+                        elseif k == "ToHSV" then
+                            return 0, 0, 0, 0
+                        elseif k == "ToHex" then
+                            return "ffffff"
+                        elseif k == "ToRGB" then
+                            return 255, 255, 255
+                        elseif k == "ToOrientation" then
+                            return 0, 0, 0
+                        elseif k == "FuzzyEq" then
+                            return true
+                        elseif k == "Inverse" or k == "ToWorldSpace" or k == "ToObjectSpace" or k == "PointToObjectSpace" or k == "Abs" then
+                            local proxy = makeProxy(retName)
+                            local pmt = getmetatable(proxy)
+                            pmt._ctorName = ctorName
+                            return proxy
+                        end
+                        return makeProxy(retName)
+                    end
+                end
                 return nil
+            end,
+            __mul = function(a, b)
+                local cn = rawget(a, "_ctorName") or ctorName
+                local v = genVar("v")
+                local sa = rawget(a, "_name") or cn
+                local sb = isProxy(b) and (rawget(b, "_name") or (getmetatable(b) and getmetatable(b)._ctorName) or "v") or tostring(b)
+                emit(string.format('local %s = %s * %s', v, sa, sb))
+                if cn == "CFrame" then
+                    local aa = rawget(a, "_ctorArgs") or {}
+                    local bc = isProxy(b) and (rawget(b, "_ctorName") or (getmetatable(b) and getmetatable(b)._ctorName)) or ""
+                    if bc == "Vector3" then
+                        local ba = type(b) == "table" and rawget(b, "_ctorArgs") or {}
+                        return makeDataProxy("Vector3", {(aa[1] or 0)+(ba[1] or 0), (aa[2] or 0)+(ba[2] or 0), (aa[3] or 0)+(ba[3] or 0)}, v)
+                    end
+                    local ba = type(b) == "table" and rawget(b, "_ctorArgs") or {}
+                    return makeDataProxy("CFrame", {(aa[1] or 0)+(ba[1] or 0), (aa[2] or 0)+(ba[2] or 0), (aa[3] or 0)+(ba[3] or 0)}, v)
+                end
+                local aa = rawget(a, "_ctorArgs") or {}
+                local ba = type(b) == "table" and rawget(b, "_ctorArgs") or {}
+                if aa and ba and aa[1] and ba[1] then
+                    return makeDataProxy(cn, {aa[1]*ba[1], aa[2]*ba[2], aa[3]*ba[3]}, v)
+                end
+                if aa and type(b) == "number" then
+                    return makeDataProxy(cn, {aa[1]*b, aa[2]*b, aa[3]*b}, v)
+                end
+                return makeDataProxy(cn, {0, 0, 0}, v)
             end,
             __add = function(a, b)
                 local aa = rawget(a, "_ctorArgs") or {}
-                local ba = rawget(b, "_ctorArgs") or {}
+                local ba = type(b) == "table" and rawget(b, "_ctorArgs") or {}
                 if aa and ba and aa[1] and ba[1] then
                     return makeDataProxy(rawget(a, "_ctorName") or "Vector3", {aa[1]+ba[1], aa[2]+ba[2], aa[3]+ba[3]}, (rawget(a,"_name") or "v").."+")
                 end
@@ -559,26 +658,23 @@ local function makeDataProxy(ctorName, ctorArgs, name)
             end,
             __sub = function(a, b)
                 local aa = rawget(a, "_ctorArgs") or {}
-                local ba = rawget(b, "_ctorArgs") or {}
+                local ba = type(b) == "table" and rawget(b, "_ctorArgs") or {}
+                if aa and ba and aa[1] and ba[1] then
+                    return makeDataProxy(rawget(a, "_ctorName") or "Vector3", {aa[1]+ba[1], aa[2]+ba[2], aa[3]+ba[3]}, (rawget(a,"_name") or "v").."+")
+                end
+                if aa and type(b) == "number" then
+                    return makeDataProxy(rawget(a, "_ctorName") or "Vector3", {aa[1]+b, aa[2]+b, aa[3]+b}, (rawget(a,"_name") or "v").."+")
+                end
+                return makeProxy("v")
+            end,
+            __sub = function(a, b)
+                local aa = rawget(a, "_ctorArgs") or {}
+                local ba = type(b) == "table" and rawget(b, "_ctorArgs") or {}
                 if aa and ba and aa[1] and ba[1] then
                     return makeDataProxy(rawget(a, "_ctorName") or "Vector3", {aa[1]-ba[1], aa[2]-ba[2], aa[3]-ba[3]}, (rawget(a,"_name") or "v").."-")
                 end
                 if aa and type(b) == "number" then
                     return makeDataProxy(rawget(a, "_ctorName") or "Vector3", {aa[1]-b, aa[2]-b, aa[3]-b}, (rawget(a,"_name") or "v").."-")
-                end
-                return makeProxy("v")
-            end,
-            __mul = function(a, b)
-                local aa = type(a) == "table" and rawget(a, "_ctorArgs") or {}
-                local ba = type(b) == "table" and rawget(b, "_ctorArgs") or {}
-                if aa and ba and aa[1] and ba[1] then
-                    return makeDataProxy(rawget(a, "_ctorName") or "Vector3", {aa[1]*ba[1], aa[2]*ba[2], aa[3]*ba[3]}, (rawget(a,"_name") or "v").."*")
-                end
-                if aa and type(b) == "number" then
-                    return makeDataProxy(rawget(a, "_ctorName") or "Vector3", {aa[1]*b, aa[2]*b, aa[3]*b}, (rawget(a,"_name") or "v").."*")
-                end
-                if type(a) == "number" and ba then
-                    return makeDataProxy(rawget(b, "_ctorName") or "Vector3", {a*ba[1], a*ba[2], a*ba[3]}, "v*")
                 end
                 return makeProxy("v")
             end,
@@ -709,9 +805,9 @@ local function makeDescriptiveVar(methodName: string?, firstArg: any?): string
     return genVar("v")
 end
 
-local makeProxy: (string) -> any
 local applyClassDefaults: (any, string) -> ()
 local spyInstance: (string, string?, boolean?) -> ()
+local knownCFunctions: { [any]: boolean } = {}
 
 local function getPropertyRuntimeType(className: string?, memberName: string): string?
     local memberInfo = resolveApiMember(className or "", memberName)
@@ -759,6 +855,21 @@ local function makeDefaultValueForRuntimeType(path: string, runtimeTypeName: str
         local mt = getmetatable(signal)
         mt._className = "RBXScriptSignal"
         return signal
+    end
+    if runtimeTypeName == "Vector3" then
+        return makeDataProxy("Vector3", {0, 0, 0}, path)
+    end
+    if runtimeTypeName == "Vector2" then
+        return makeDataProxy("Vector2", {0, 0}, path)
+    end
+    if runtimeTypeName == "CFrame" then
+        return makeDataProxy("CFrame", {0, 0, 0}, path)
+    end
+    if runtimeTypeName == "UDim2" then
+        return makeDataProxy("UDim2", {0, 0, 0, 0}, path)
+    end
+    if runtimeTypeName == "Color3" then
+        return makeDataProxy("Color3", {0.631373, 0.647059, 0.631373}, path)
     end
     if runtimeTypeName ~= nil then
         return makeTypedProxy(path, runtimeTypeName, apiType)
@@ -1775,10 +1886,11 @@ local classDefaultProperties: { [string]: { [string]: any } } = {
         MaxForce = 0, MaxPlanarAxesForce = "Vector2", PlaneVelocity = "Vector2", PrimaryTangentAxis = "Vector3",
         ReactionForceEnabled = false, SecondaryTangentAxis = "Vector3", VectorVelocity = "Vector3",
     },
-    LocalScript = {},
+    LocalScript = { Source = "" },
     LocalizationService = {
         ForcePlayModeGameLocaleId = "", ForcePlayModeRobloxLocaleId = "", IsTextScraperRunning = false,
         RobloxForcePlayModeGameLocaleId = "", RobloxForcePlayModeRobloxLocaleId = "",
+        RobloxLocaleId = "en-us", CoreScriptLocaleId = "en-us",
     },
     LocalizationTable = {
         SourceLocaleId = "",
@@ -1819,7 +1931,7 @@ local classDefaultProperties: { [string]: { [string]: any } } = {
         WorldPivot = "CFrame",
     },
     ModuleScript = {
-        LinkedSource = "",
+        LinkedSource = "", Source = "",
     },
     Motor = {
         CurrentAngle = 0, DesiredAngle = 0, MaxVelocity = 0,
@@ -2400,11 +2512,13 @@ makeProxy = function(name: string): any
                 svcMt._className = ks
                 svcMt._storedValues["ClassName"] = ks
                 svcMt._setKeys["ClassName"] = true
+                svcMt._storedValues["Name"] = ks
+                svcMt._setKeys["Name"] = true
                 if ks == "Chat" then
                     local ugcParent = makeProxy("ugc")
                     local ugcMt = getmetatable(ugcParent)
                     ugcMt._className = "Folder"
-                    ugcMt._storedValues["Name"] = "ugc"
+                    ugcMt._storedValues["Name"] = "Ugc"
                     ugcMt._setKeys["Name"] = true
                     ugcMt._storedValues["ClassName"] = "Folder"
                     ugcMt._setKeys["ClassName"] = true
@@ -2418,14 +2532,71 @@ makeProxy = function(name: string): any
             end
             return serviceCache[ks]
         end
+        if mt._className == "Player" and ks == "MembershipType" then
+            if not setKeys[ks] then
+                local envRef = _G._envRef
+                if envRef and envRef.Enum then
+                    return envRef.Enum.MembershipType.None
+                end
+            end
+            return storedValues[ks]
+        end
         if mt._className == "Players" and ks == "LocalPlayer" then
             if not children[ks] then
                 local player = spyInstance("Player", "LocalPlayer", true)
                 local pmt = getmetatable(player)
+                pmt._storedValues["Parent"] = t
+                pmt._setKeys["Parent"] = true
                 pmt._storedValues["UserId"] = 0
                 pmt._setKeys["UserId"] = true
-                pmt._storedValues["Character"] = nil
+                local character = spyInstance("Model", "Character", true)
+                local charMt = getmetatable(character)
+                charMt._storedValues["Name"] = "CatmiO"
+                charMt._setKeys["Name"] = true
+                local humanoid = spyInstance("Humanoid", "Humanoid", true)
+                local humanoidMt = getmetatable(humanoid)
+                humanoidMt._storedValues["Health"] = 100
+                humanoidMt._setKeys["Health"] = true
+                humanoidMt._storedValues["MaxHealth"] = 100
+                humanoidMt._setKeys["MaxHealth"] = true
+                if not parentChildMap["Character"] then parentChildMap["Character"] = {} end
+                parentChildMap["Character"]["Humanoid"] = humanoid
+                local rootPart = spyInstance("Part", "HumanoidRootPart", true)
+                local rpMt = getmetatable(rootPart)
+                rpMt._storedValues["CFrame"] = makeDataProxy("CFrame", {0, 0, 0}, "HumanoidRootPart.CFrame")
+                rpMt._setKeys["CFrame"] = true
+                parentChildMap["Character"]["HumanoidRootPart"] = rootPart
+                local animate = spyInstance("LocalScript", "Animate", true)
+                parentChildMap["Character"]["Animate"] = animate
+                pmt._storedValues["Character"] = character
                 pmt._setKeys["Character"] = true
+                pmt._storedValues["UserId"] = 0
+                pmt._setKeys["UserId"] = true
+                pmt._storedValues["AccountAge"] = 0
+                pmt._setKeys["AccountAge"] = true
+                local playerScripts = spyInstance("Folder", "PlayerScripts", true)
+                local psMt = getmetatable(playerScripts)
+                psMt._className = "PlayerScripts"
+                psMt._storedValues["ClassName"] = "PlayerScripts"
+                psMt._setKeys["ClassName"] = true
+                local playerModule = spyInstance("ModuleScript", "PlayerModule", true)
+                local rbxCharacterSounds = spyInstance("ModuleScript", "RbxCharacterSounds", true)
+                local atomicBinding = spyInstance("ModuleScript", "AtomicBinding", true)
+                local abMt = getmetatable(atomicBinding)
+                abMt._storedValues["Archivable"] = false
+                abMt._setKeys["Archivable"] = true
+                if not parentChildMap["RbxCharacterSounds"] then parentChildMap["RbxCharacterSounds"] = {} end
+                parentChildMap["RbxCharacterSounds"]["AtomicBinding"] = atomicBinding
+                if not parentChildMap["PlayerScripts"] then parentChildMap["PlayerScripts"] = {} end
+                parentChildMap["PlayerScripts"]["PlayerModule"] = playerModule
+                parentChildMap["PlayerScripts"]["RbxCharacterSounds"] = rbxCharacterSounds
+                local playerGui = spyInstance("PlayerGui", "PlayerGui", true)
+                parentChildMap["PlayerScripts"]["PlayerGui"] = playerGui
+                local backpack = spyInstance("Backpack", "Backpack", true)
+                parentChildMap["PlayerScripts"]["Backpack"] = backpack
+                children["PlayerScripts"] = playerScripts
+                children["PlayerGui"] = playerGui
+                children["Backpack"] = backpack
                 children[ks] = player
             end
             return children[ks]
@@ -2437,11 +2608,81 @@ makeProxy = function(name: string): any
             end
             return children[ks]
         end
+        local INHERENT_SERVICE_METHODS = {
+            RunService = { GetRealPhysicsFPS = true, GetPhysicsFPS = true, IsStudio = true },
+            SoundService = { GetMixerTime = true, GetAudioInstances = true, GetInputDevices = true, GetOutputDevices = true },
+            ReflectionService = { GetClasses = true, GetMembers = true, GetProperties = true, GetFunctions = true, GetEvents = true, GetEnums = true },
+            StarterGui = { GetCore = true, SetCore = true, RegisterGetCore = true, RegisterSetCore = true },
+            VoiceChatService = {
+                getInternalSessionId = true, getInternalChannelId = true,
+                getInternalGroupId = true, isInternalPublishPaused = true,
+                lastVoiceChatStats = true, joinVoice = true, rejoinVoice = true, leaveVoice = true,
+            },
+        }
+        local inherentMethods = mt._className and INHERENT_SERVICE_METHODS[mt._className] or nil
+        if inherentMethods and inherentMethods[ks] then
+            if not children[ks] then
+                local parentRef = t
+                local fieldNameStr = ks
+                local fn = function(_, ...)
+                    _G._methodParent = parentRef
+                    _G._methodField = fieldNameStr
+                    local ccmt = getmetatable(parentRef)
+                    return ccmt.__call(parentRef, parentRef, ...)
+                end
+                children[ks] = fn
+                knownCFunctions[fn] = true
+            end
+            return children[ks]
+        end
         if ks == "ClassName" and mt._className then
             return mt._className
         end
+        local ctorName = mt._ctorName or rawget(t, "_ctorName")
+        if ctorName == "CFrame" then
+            local args = mt._ctorArgs or {}
+            if ks == "Position" then
+                local v = makeProxy(name .. ".Position")
+                local vmt = getmetatable(v)
+                vmt._ctorName = "Vector3"
+                vmt._ctorArgs = { args[1] or 0, args[2] or 0, args[3] or 0 }
+                return v
+            end
+            if ks == "X" then return args[1] or 0 end
+            if ks == "Y" then return args[2] or 0 end
+            if ks == "Z" then return args[3] or 0 end
+            if ks == "LookVector" then
+                local v = makeProxy(name .. ".LookVector")
+                local vmt = getmetatable(v)
+                vmt._ctorName = "Vector3"
+                vmt._ctorArgs = { 0, 0, -1 }
+                return v
+            end
+            if ks == "RightVector" then
+                local v = makeProxy(name .. ".RightVector")
+                local vmt = getmetatable(v)
+                vmt._ctorName = "Vector3"
+                vmt._ctorArgs = { 1, 0, 0 }
+                return v
+            end
+            if ks == "UpVector" then
+                local v = makeProxy(name .. ".UpVector")
+                local vmt = getmetatable(v)
+                vmt._ctorName = "Vector3"
+                vmt._ctorArgs = { 0, 1, 0 }
+                return v
+            end
+        end
         local memberInfo = resolveApiMember(mt._className or "", ks)
-        if mt._className == "RBXScriptSignal" and (ks == "Connect" or ks == "connect" or ks == "Wait" or ks == "wait" or ks == "Once" or ks == "Disconnect" or ks == "disconnect") then
+        local DATA_TYPE_METHODS = {
+            Color3 = { Lerp = true, ToHSV = true, ToHex = true, ToRGB = true },
+            Vector3 = { Lerp = true, Dot = true, Cross = true, Angle = true, FuzzyEq = true, Abs = true, Unit = true },
+            Vector2 = { Lerp = true, Dot = true, Cross = true, Abs = true },
+            UDim2 = { Lerp = true },
+            CFrame = { Lerp = true, ToOrientation = true, ToEulerAnglesXYZ = true, ToEulerAnglesYXZ = true, PointToObjectSpace = true, ToWorldSpace = true, ToObjectSpace = true, Inverse = true },
+            UDim = { Lerp = true },
+        }
+        if ctorName and DATA_TYPE_METHODS[ctorName] and DATA_TYPE_METHODS[ctorName][ks] then
             if not children[ks] then
                 local parentRef = t
                 local fieldNameStr = ks
@@ -2451,6 +2692,63 @@ makeProxy = function(name: string): any
                     local ccmt = getmetatable(parentRef)
                     return ccmt.__call(parentRef, parentRef, ...)
                 end
+                knownCFunctions[children[ks]] = true
+            end
+            return children[ks]
+        end
+        local ALWAYS_AVAILABLE_METHODS = {
+            IsA = true, GetChildren = true, GetDescendants = true,
+            GetFullName = true, FindFirstChild = true, FindFirstDescendant = true,
+            FindFirstAncestor = true, FindFirstChildWhichIsA = true,
+            FindFirstChildOfClass = true, FindFirstAncestorWhichIsA = true,
+            FindFirstAncestorOfClass = true, GetDebugId = true,
+            GetTags = true, AddTag = true, RemoveTag = true,
+            HasTag = true, GetAttribute = true, GetAttributes = true,
+            SetAttribute = true, GetPropertyChangedSignal = true,
+            IsDescendantOf = true, IsAncestorOf = true,
+            Clone = true, Destroy = true, Remove = true,
+            ClearAllChildren = true, GetAttributeChangedSignal = true,
+            NextNumber = true, NextInteger = true, NextUnitVector = true,
+        }
+        if ALWAYS_AVAILABLE_METHODS[ks] and not children[ks] then
+            local parentRef = t
+            local fieldNameStr = ks
+            children[ks] = function(_, ...)
+                _G._methodParent = parentRef
+                _G._methodField = fieldNameStr
+                local ccmt = getmetatable(parentRef)
+                return ccmt.__call(parentRef, parentRef, ...)
+            end
+            knownCFunctions[children[ks]] = true
+            return children[ks]
+        end
+        if mt._className == "RBXScriptSignal" and (ks == "Connect" or ks == "connect" or ks == "Wait" or ks == "wait" or ks == "Once" or ks == "Disconnect" or ks == "disconnect" or ks == "ConnectParallel") then
+            if not children[ks] then
+                local parentRef = t
+                local fieldNameStr = ks
+                local fn = function(_, ...)
+                    _G._methodParent = parentRef
+                    _G._methodField = fieldNameStr
+                    local ccmt = getmetatable(parentRef)
+                    return ccmt.__call(parentRef, parentRef, ...)
+                end
+                children[ks] = fn
+                knownCFunctions[fn] = true
+            end
+            return children[ks]
+        end
+        if mt._className == "RBXScriptConnection" and (ks == "Disconnect" or ks == "disconnect" or ks == "Enabled") then
+            if not children[ks] then
+                local parentRef = t
+                local fieldNameStr = ks
+                local fn = function(_, ...)
+                    _G._methodParent = parentRef
+                    _G._methodField = fieldNameStr
+                    local ccmt = getmetatable(parentRef)
+                    return ccmt.__call(parentRef, parentRef, ...)
+                end
+                children[ks] = fn
+                knownCFunctions[fn] = true
             end
             return children[ks]
         end
@@ -2473,12 +2771,14 @@ makeProxy = function(name: string): any
             if not children[ks] then
                 local parentRef = t
                 local fieldNameStr = ks
-                children[ks] = function(_, ...)
+                local fn = function(_, ...)
                     _G._methodParent = parentRef
                     _G._methodField = fieldNameStr
                     local ccmt = getmetatable(parentRef)
                     return ccmt.__call(parentRef, parentRef, ...)
                 end
+                children[ks] = fn
+                knownCFunctions[fn] = true
             end
             return children[ks]
         end
@@ -2612,6 +2912,92 @@ makeProxy = function(name: string): any
             return 0
         end
 
+        do
+            local parentNameStr = mt._name or name
+            if parentChildMap[parentNameStr] then
+                local found = parentChildMap[parentNameStr][ks]
+                if found ~= nil then
+                    return found
+                end
+            end
+        end
+
+        local cls = mt._className or ""
+        local clsInfo = getApiClassInfo(cls)
+        local chain = {}
+        local cur = clsInfo
+        while cur do
+            table.insert(chain, cur.name)
+            if type(cur.superclass) ~= "string" or cur.superclass == "" then break end
+            cur = getApiClassInfo(cur.superclass)
+        end
+        local foundInDefaults = false
+        for i = 1, #chain do
+            local defaults = classDefaultProperties[chain[i]]
+            if defaults and defaults[ks] ~= nil then
+                foundInDefaults = true
+                local dv = defaults[ks]
+                if dv == "Color3" then
+                    local c = makeDataProxy("Color3", { 0.631373, 0.647059, 0.631373 }, name .. "." .. ks)
+                    storedValues[ks] = c
+                    setKeys[ks] = true
+                    return c
+                elseif dv == "Vector3" then
+                    local v = makeDataProxy("Vector3", { 0, 0, 0 }, name .. "." .. ks)
+                    storedValues[ks] = v
+                    setKeys[ks] = true
+                    return v
+                elseif dv == "Vector2" then
+                    local v = makeDataProxy("Vector2", { 0, 0 }, name .. "." .. ks)
+                    storedValues[ks] = v
+                    setKeys[ks] = true
+                    return v
+                elseif dv == "UDim2" then
+                    local u = makeDataProxy("UDim2", { 0, 0, 0, 0 }, name .. "." .. ks)
+                    storedValues[ks] = u
+                    setKeys[ks] = true
+                    return u
+                elseif dv == "CFrame" then
+                    local cf = makeDataProxy("CFrame", { 0, 0, 0 }, name .. "." .. ks)
+                    storedValues[ks] = cf
+                    setKeys[ks] = true
+                    return cf
+                elseif dv == "NumberRange" then
+                    local nr = makeDataProxy("NumberRange", { 0, 0 }, name .. "." .. ks)
+                    storedValues[ks] = nr
+                    setKeys[ks] = true
+                    return nr
+                elseif type(dv) == "string" and dv:match("^Enum%.") then
+                    local enumName = dv:match("^Enum%.([%w_]+)%.")
+                    local itemName = dv:sub(dv:find("%.[^%.]*$") + 1, -1)
+                    local envRef = _G._envRef
+                    if envRef and envRef.Enum and envRef.Enum[enumName] then
+                        local item = envRef.Enum[enumName][itemName]
+                        storedValues[ks] = item
+                        setKeys[ks] = true
+                        return item
+                    end
+                    local enumItem = makeProxy(name .. "." .. ks)
+                    local eimt = getmetatable(enumItem)
+                    eimt._className = "EnumItem"
+                    eimt._ctorName = "EnumItem"
+                    eimt._storedValues["Name"] = itemName
+                    eimt._setKeys["Name"] = true
+                    eimt._storedValues["Value"] = 0
+                    eimt._setKeys["Value"] = true
+                    eimt._storedValues["EnumType"] = dv:match("^Enum%.([%w_]+)%.")
+                    eimt._setKeys["EnumType"] = true
+                    storedValues[ks] = enumItem
+                    setKeys[ks] = true
+                    return enumItem
+                else
+                    storedValues[ks] = dv
+                    setKeys[ks] = true
+                    return dv
+                end
+            end
+        end
+
         local memberDefaultValue = nil
         memberDefaultValue, memberInfo = getMemberDefaultValue(mt._className or "", ks, name .. "." .. ks)
         if memberDefaultValue ~= nil then
@@ -2625,86 +3011,6 @@ makeProxy = function(name: string): any
         end
         if memberInfo ~= nil then
             return nil
-        end
-
-        local cls = mt._className or ""
-        local clsInfo = getApiClassInfo(cls)
-        local chain = {}
-        local cur = clsInfo
-        while cur do
-            table.insert(chain, cur.name)
-            if type(cur.superclass) ~= "string" or cur.superclass == "" then break end
-            cur = getApiClassInfo(cur.superclass)
-        end
-        for i = 1, #chain do
-            local defaults = classDefaultProperties[chain[i]]
-            if defaults and defaults[ks] ~= nil then
-                local dv = defaults[ks]
-                if dv == "Color3" then
-                    local c = makeProxy(name .. "." .. ks)
-                    local cmt = getmetatable(c)
-                    cmt._ctorName = "Color3"
-                    cmt._ctorArgs = { 0.631373, 0.647059, 0.631373 }
-                    storedValues[ks] = c
-                    setKeys[ks] = true
-                    return c
-                elseif dv == "Vector3" then
-                    local v = makeProxy(name .. "." .. ks)
-                    local vmt = getmetatable(v)
-                    vmt._ctorName = "Vector3"
-                    vmt._ctorArgs = { 0, 0, 0 }
-                    storedValues[ks] = v
-                    setKeys[ks] = true
-                    return v
-                elseif dv == "Vector2" then
-                    local v = makeProxy(name .. "." .. ks)
-                    local vmt = getmetatable(v)
-                    vmt._ctorName = "Vector2"
-                    vmt._ctorArgs = { 0, 0 }
-                    storedValues[ks] = v
-                    setKeys[ks] = true
-                    return v
-                elseif dv == "UDim2" then
-                    local u = makeProxy(name .. "." .. ks)
-                    local umt = getmetatable(u)
-                    umt._ctorName = "UDim2"
-                    umt._ctorArgs = { 0, 0, 0, 0 }
-                    storedValues[ks] = u
-                    setKeys[ks] = true
-                    return u
-                elseif dv == "CFrame" then
-                    local cf = makeProxy(name .. "." .. ks)
-                    local cfmt = getmetatable(cf)
-                    cfmt._ctorName = "CFrame"
-                    cfmt._ctorArgs = { 0, 0, 0 }
-                    storedValues[ks] = cf
-                    setKeys[ks] = true
-                    return cf
-                elseif dv == "NumberRange" then
-                    local nr = makeProxy(name .. "." .. ks)
-                    local nrmt = getmetatable(nr)
-                    nrmt._ctorName = "NumberRange"
-                    nrmt._ctorArgs = { 0, 0 }
-                    storedValues[ks] = nr
-                    setKeys[ks] = true
-                    return nr
-                elseif type(dv) == "string" and dv:match("^Enum%.") then
-                    local enumItem = makeProxy(name .. "." .. ks)
-                    local eimt = getmetatable(enumItem)
-                    eimt._className = "EnumItem"
-                    eimt._ctorName = "EnumItem"
-                    eimt._storedValues["Name"] = dv:sub(dv:find("%.[^%.]*$") + 1, -1)
-                    eimt._storedValues["Value"] = 0
-                    eimt._storedValues["EnumType"] = dv:match("^Enum%.([%w_]+)%.")
-                    storedValues[ks] = enumItem
-                    setKeys[ks] = true
-                    return enumItem
-                else
-                    storedValues[ks] = dv
-                    setKeys[ks] = true
-                    return dv
-                end
-            end
         end
 
         if booleanPseudoProps[ks] then
@@ -2741,16 +3047,6 @@ makeProxy = function(name: string): any
             return u
         end
 
-        do
-            local parentNameStr = mt._name or name
-            if parentChildMap[parentNameStr] then
-                local found = parentChildMap[parentNameStr][ks]
-                if found ~= nil then
-                    return found
-                end
-            end
-        end
-
         local clsName = mt._className or "Instance"
         local instDisplayName = storedValues["Name"] or name or clsName
         local errMessage = ks .. " is not a valid member of " .. clsName .. " \"" .. tostring(instDisplayName) .. "\""
@@ -2759,6 +3055,9 @@ makeProxy = function(name: string): any
     end
     mt.__newindex = function(t, k, v)
         tick()
+        if destroyedInstances[name] then
+            error("Instance has been destroyed", 2)
+        end
         local ks = tostring(k)
         local cls = mt._className or ""
         local memberInfo = resolveApiMember(cls, ks)
@@ -2777,6 +3076,15 @@ makeProxy = function(name: string): any
             error("attempt to set Parent to a non-Instance value", 2)
         end
         if ks == "Parent" and isProxy(v) then
+            local newParent = v
+            local cur = newParent
+            while cur and isProxy(cur) do
+                if rawequal(cur, t) then
+                    error("Attempt to set parent to a child of self", 2)
+                end
+                local curMt = getmetatable(cur)
+                cur = curMt and curMt._storedValues and curMt._storedValues["Parent"] or nil
+            end
             local parentName = getmetatable(v)._name
             local childName = name
             local childDisplayName = storedValues["Name"] or childName
@@ -2809,6 +3117,37 @@ makeProxy = function(name: string): any
                 storedValues["Parent"] = nil
             end
         end
+        if ks == "VectorVelocity" and isProxy(v) and mt._className == "LinearVelocity" then
+            mt._pendingVelocity = v
+            local parentRef = storedValues["Parent"]
+            if parentRef and isProxy(parentRef) then
+                local parentMt = getmetatable(parentRef)
+                if parentMt and parentMt._storedValues then
+                    local velArgs = {}
+                    local srcMt = getmetatable(v)
+                    if srcMt then
+                        velArgs = rawget(v, "_ctorArgs") or srcMt._ctorArgs or {}
+                    end
+                    local velProxy = makeDataProxy("Vector3", velArgs, name .. ".AssemblyLinearVelocity")
+                    parentMt._storedValues["AssemblyLinearVelocity"] = velProxy
+                    parentMt._setKeys["AssemblyLinearVelocity"] = true
+                end
+            end
+        end
+        if ks == "Parent" and isProxy(v) and mt._className == "LinearVelocity" and mt._pendingVelocity then
+            local parentMt = getmetatable(v)
+            if parentMt and parentMt._storedValues then
+                local velArgs = {}
+                local pending = mt._pendingVelocity
+                local srcMt = getmetatable(pending)
+                if srcMt then
+                    velArgs = rawget(pending, "_ctorArgs") or srcMt._ctorArgs or {}
+                end
+                local velProxy = makeDataProxy("Vector3", velArgs, name .. ".AssemblyLinearVelocity")
+                parentMt._storedValues["AssemblyLinearVelocity"] = velProxy
+                parentMt._setKeys["AssemblyLinearVelocity"] = true
+            end
+        end
         if ks == "Anchored" then
             local cls = mt._className or ""
             local isPartLike = (cls == "Part" or cls == "BasePart" or cls == "TrussPart" or cls == "WedgePart" or cls == "CornerWedgePart" or cls == "MeshPart" or cls == "UnionOperation" or cls == "NegateOperation" or cls == "Seat" or cls == "VehicleSeat")
@@ -2818,6 +3157,9 @@ makeProxy = function(name: string): any
                         unanchoredParts[t] = true
                         awakePartsCount += 1
                     end
+                    if _G._physicsParts then
+                        _G._physicsParts[t] = true
+                    end
                 else
                     if unanchoredParts[t] then
                         unanchoredParts[t] = nil
@@ -2825,6 +3167,18 @@ makeProxy = function(name: string): any
                             awakePartsCount -= 1
                         end
                     end
+                    if _G._physicsParts then
+                        _G._physicsParts[t] = nil
+                    end
+                end
+            end
+        end
+        if ks == "Parent" and isProxy(v) then
+            local cls = mt._className or ""
+            local isPartLike = (cls == "Part" or cls == "BasePart" or cls == "TrussPart" or cls == "WedgePart" or cls == "CornerWedgePart" or cls == "MeshPart" or cls == "UnionOperation" or cls == "NegateOperation" or cls == "Seat" or cls == "VehicleSeat")
+            if isPartLike and storedValues["Anchored"] == false then
+                if _G._physicsParts then
+                    _G._physicsParts[t] = true
                 end
             end
         end
@@ -2857,7 +3211,7 @@ makeProxy = function(name: string): any
         end
 
         local STATEMENT_METHODS = {
-            Connect = true, connect = true, Once = true, Disconnect = true,
+            Connect = true, connect = true, ConnectParallel = true, Once = true, Disconnect = true,
             Wait = true, wait = true, Destroy = true, Remove = true,
             ClearAllChildren = true, DisconnectAll = true,
             Init = true, Notify = true, Play = true, Pause = true, Cancel = true,
@@ -2879,7 +3233,10 @@ makeProxy = function(name: string): any
             IsAvailable = true, HasAchieved = true,
             GetRealPhysicsFPS = true, GetPhysicsFPS = true,
             PreloadAsync = true, SendKeyEvent = true, GetDebugId = true,
-            Create = true,
+            Create = true, SendAsync = true,
+            ApplyAngularImpulse = true, ApplyImpulse = true, ApplyLinearImpulse = true,
+            GetPlayerFromCharacter = true, ReadVoxels = true,
+            SetSource = true, GetSource = true,
         }
 
         local isMethod = false
@@ -2930,6 +3287,27 @@ makeProxy = function(name: string): any
                     emit(string.format('local %s = %s:FindService(%s)', serviceName, parentName, serialize(firstArg)))
                     return nil
                 end
+                local svcProxy = makeProxy(serviceName)
+                local svcMt = getmetatable(svcProxy)
+                svcMt._className = serviceName
+                svcMt._storedValues["ClassName"] = serviceName
+                svcMt._setKeys["ClassName"] = true
+                svcMt._storedValues["Name"] = serviceName
+                svcMt._setKeys["Name"] = true
+                if serviceName == "Chat" then
+                    local ugcParent = makeProxy("ugc")
+                    local ugcMt = getmetatable(ugcParent)
+                    ugcMt._className = "Folder"
+                    ugcMt._storedValues["Name"] = "Ugc"
+                    ugcMt._setKeys["Name"] = true
+                    ugcMt._storedValues["ClassName"] = "Folder"
+                    ugcMt._setKeys["ClassName"] = true
+                    svcMt._storedValues["Parent"] = ugcParent
+                    svcMt._setKeys["Parent"] = true
+                end
+                serviceCache[serviceName] = svcProxy
+                emit(string.format('local %s = %s:FindService(%s)', serviceName, parentName, serialize(firstArg)))
+                return svcProxy
             end
             if serviceName == "Workspace" or serviceName == "workspace" then
                 emit(string.format('local %s = %s:GetService(%s)', serviceName, parentName, serialize(firstArg)))
@@ -2959,11 +3337,13 @@ makeProxy = function(name: string): any
             serviceMt._className = serviceName
             serviceMt._storedValues["ClassName"] = serviceName
             serviceMt._setKeys["ClassName"] = true
+            serviceMt._storedValues["Name"] = serviceName
+            serviceMt._setKeys["Name"] = true
             if serviceName == "Chat" then
                 local ugcParent = makeProxy("ugc")
                 local ugcMt = getmetatable(ugcParent)
                 ugcMt._className = "Folder"
-                ugcMt._storedValues["Name"] = "ugc"
+                ugcMt._storedValues["Name"] = "Ugc"
                 ugcMt._setKeys["Name"] = true
                 ugcMt._storedValues["ClassName"] = "Folder"
                 ugcMt._setKeys["ClassName"] = true
@@ -2971,6 +3351,35 @@ makeProxy = function(name: string): any
                 serviceMt._setKeys["Parent"] = true
             end
             serviceCache[serviceName] = serviceProxy
+            local SERVICE_CHILDREN = {
+                TextChatService = { TextChannels = "Folder", TextCommands = "Folder" },
+                Players = { LocalPlayer = "Player" },
+                NetworkClient = { ClientReplicator = "ClientReplicator" },
+                Workspace = { Terrain = "Terrain", Camera = "Camera" },
+                CoreGui = { RobloxGui = "ScreenGui", DevConsoleMaster = "ScreenGui" },
+                ReplicatedStorage = { DefaultChatSystemChatEvents = "Folder" },
+                StarterGui = { },
+                StarterPlayer = { StarterPlayerScripts = "Folder", StarterCharacterScripts = "Folder" },
+            }
+            if SERVICE_CHILDREN[serviceName] then
+                if not parentChildMap[serviceName] then parentChildMap[serviceName] = {} end
+                for childName, childCls in pairs(SERVICE_CHILDREN[serviceName]) do
+                    if not parentChildMap[serviceName][childName] then
+                        local child = spyInstance(childCls, childName, true)
+                        parentChildMap[serviceName][childName] = child
+                        if serviceName == "TextChatService" and childName == "TextChannels" then
+                            if not parentChildMap["TextChannels"] then parentChildMap["TextChannels"] = {} end
+                            local rbxGeneral = spyInstance("TextChannel", "RBXGeneral", true)
+                            parentChildMap["TextChannels"]["RBXGeneral"] = rbxGeneral
+                        end
+                        if serviceName == "ReplicatedStorage" and childName == "DefaultChatSystemChatEvents" then
+                            if not parentChildMap["DefaultChatSystemChatEvents"] then parentChildMap["DefaultChatSystemChatEvents"] = {} end
+                            local req = spyInstance("RemoteEvent", "SetBlockedUserIdsRequest", true)
+                            parentChildMap["DefaultChatSystemChatEvents"]["SetBlockedUserIdsRequest"] = req
+                        end
+                    end
+                end
+            end
             emit(string.format('local %s = %s:GetService(%s)', serviceName, parentName, serialize(firstArg)))
             return serviceProxy
         end
@@ -2986,6 +3395,9 @@ makeProxy = function(name: string): any
             end
             local signalProxy = makeProxy(retName)
             local signalMt = getmetatable(signalProxy)
+            signalMt._className = "RBXScriptSignal"
+            signalMt._storedValues["ClassName"] = "RBXScriptSignal"
+            signalMt._setKeys["ClassName"] = true
             signalMt._signalForProperty = { proxy = parent, propName = firstArg }
             emit(string.format('local %s = %s:GetPropertyChangedSignal(%s)', retName, parentName, serialize(firstArg)))
             return signalProxy
@@ -3123,6 +3535,26 @@ makeProxy = function(name: string): any
             if type(timeout) == "number" and timeout < 0 then
                 error("WaitForChild: invalid timeout", 0)
             end
+            if type(firstArg) == "string" then
+                local children = parentChildMap[parentName]
+                if children and children[firstArg] then
+                    return children[firstArg]
+                end
+                local parentMt = getmetatable(parent)
+                local parentCls = parentMt and parentMt._className or ""
+                local SERVICE_KNOWN_CHILDREN = {
+                    NetworkClient = { ClientReplicator = "ClientReplicator" },
+                    Players = { LocalPlayer = "Player" },
+                    Workspace = { Terrain = "Terrain", Camera = "Camera" },
+                }
+                if SERVICE_KNOWN_CHILDREN[parentCls] and SERVICE_KNOWN_CHILDREN[parentCls][firstArg] then
+                    local childCls = SERVICE_KNOWN_CHILDREN[parentCls][firstArg]
+                    local child = spyInstance(childCls, firstArg, true)
+                    if not parentChildMap[parentName] then parentChildMap[parentName] = {} end
+                    parentChildMap[parentName][firstArg] = child
+                    return child
+                end
+            end
             return makeProxy(retName)
         end
 
@@ -3134,7 +3566,7 @@ makeProxy = function(name: string): any
         if isMethod and fieldName == "GetMemStats" and parent then
             local parentName = proxyName(parent)
             emit(string.format('local %s = %s:GetMemStats()', retName, parentName))
-            return { cpuLoad = 0, gpuLoad = 0, ram = 0, vram = 0 }
+            return { cpuLoad = 0, gpuLoad = 0, ram = 0, vram = 0, videoMemory = 0, systemMemory = 0 }
         end
 
         if isMethod and fieldName == "GetNumAwakeParts" and parent then
@@ -3151,17 +3583,42 @@ makeProxy = function(name: string): any
         if isMethod and fieldName == "GetCharacterAppearanceInfoAsync" and parent then
             local parentName = proxyName(parent)
             emit(string.format('local %s = %s:GetCharacterAppearanceInfoAsync(%s)', retName, parentName, serialize(firstArg)))
-            return { assets = { { id = 1, name = "Shirt" }, { id = 2, name = "Pants" } }, bodyColors = {}, scales = {} }
+            return {
+                assets = {
+                    { id = 1, name = "Shirt", assetType = { id = 1, name = "Shirt" } },
+                    { id = 2, name = "Pants", assetType = { id = 2, name = "Pants" } },
+                },
+                bodyColors = {
+                    leftArmColorId = 1, torsoColorId = 1, rightArmColorId = 1,
+                    headColorId = 1, leftLegColorId = 1, rightLegColorId = 1,
+                },
+                scales = {
+                    bodyType = 0, head = 1, height = 1, proportion = 0,
+                    depth = 1, width = 1,
+                },
+                defaultShirtApplied = false,
+                defaultPantsApplied = false,
+            }
         end
 
         if isMethod and fieldName == "AddTag" and parent then
             local parentName = proxyName(parent)
+            local instProxy = firstArg
             local instName = ""
-            if isProxy(firstArg) then instName = getmetatable(firstArg)._name end
+            if isProxy(instProxy) then instName = getmetatable(instProxy)._name end
             local tagName = args[startIdx + 1]
             if instName ~= "" and type(tagName) == "string" then
-                if not instanceTags[instName] then instanceTags[instName] = {} end
-                table.insert(instanceTags[instName], tagName)
+                if not instanceTags[instName] then
+                    instanceTags[instName] = {}
+                    instanceTags[instName .. ".__proxy__"] = instProxy
+                end
+                local alreadyHas = false
+                for _, t in ipairs(instanceTags[instName]) do
+                    if t == tagName then alreadyHas = true break end
+                end
+                if not alreadyHas then
+                    table.insert(instanceTags[instName], tagName)
+                end
             end
             emit(string.format('%s:AddTag(%s)', parentName, table.concat(parts, ", ")))
             return makeProxy(retName)
@@ -3235,16 +3692,70 @@ makeProxy = function(name: string): any
             return cloneProxy
         end
 
+        if isMethod and (fieldName == "Lerp" or fieldName == "Dot" or fieldName == "Cross" or fieldName == "Angle" or fieldName == "FuzzyEq" or fieldName == "Abs" or fieldName == "ToHSV" or fieldName == "ToHex" or fieldName == "ToRGB" or fieldName == "ToOrientation" or fieldName == "Inverse" or fieldName == "ToWorldSpace" or fieldName == "ToObjectSpace" or fieldName == "PointToObjectSpace") and parent then
+            local parentName = proxyName(parent)
+            local parentMt = getmetatable(parent)
+            local ctorName = parentMt and (parentMt._ctorName or rawget(parent, "_ctorName")) or ""
+            emit(string.format('local %s = %s:%s(%s)', retName, parentName, fieldName, table.concat(parts, ", ")))
+            if fieldName == "Lerp" then
+                if ctorName == "Color3" then
+                    local proxy = makeProxy(retName)
+                    local pmt = getmetatable(proxy)
+                    pmt._ctorName = "Color3"
+                    return proxy
+                elseif ctorName == "Vector3" or ctorName == "Vector2" or ctorName == "UDim2" or ctorName == "CFrame" or ctorName == "UDim" then
+                    local proxy = makeProxy(retName)
+                    local pmt = getmetatable(proxy)
+                    pmt._ctorName = ctorName
+                    return proxy
+                end
+            elseif fieldName == "Dot" or fieldName == "Cross" or fieldName == "Angle" then
+                if fieldName == "Cross" then
+                    local proxy = makeProxy(retName)
+                    local pmt = getmetatable(proxy)
+                    pmt._ctorName = "Vector3"
+                    return proxy
+                end
+                return 0
+            elseif fieldName == "ToHSV" then
+                return 0, 0, 0, 0
+            elseif fieldName == "ToHex" then
+                return "ffffff"
+            elseif fieldName == "ToRGB" then
+                return 255, 255, 255
+            elseif fieldName == "ToOrientation" then
+                return 0, 0, 0
+            elseif fieldName == "Inverse" or fieldName == "ToWorldSpace" or fieldName == "ToObjectSpace" or fieldName == "PointToObjectSpace" then
+                local proxy = makeProxy(retName)
+                local pmt = getmetatable(proxy)
+                pmt._ctorName = ctorName
+                return proxy
+            elseif fieldName == "Abs" then
+                local proxy = makeProxy(retName)
+                local pmt = getmetatable(proxy)
+                pmt._ctorName = ctorName
+                return proxy
+            elseif fieldName == "FuzzyEq" then
+                return true
+            end
+            return makeProxy(retName)
+        end
+
         if isMethod and fieldName == "Create" and parent then
             local parentName = proxyName(parent)
             local parentMt = getmetatable(parent)
             local parentClassName = parentMt and parentMt._className or ""
             emit(string.format('local %s = %s:Create(%s)', retName, parentName, table.concat(parts, ", ")))
             local goal = args[startIdx + 2]
+            local targetInstance = args[startIdx]
+            local targetClassName = ""
+            if isProxy(targetInstance) then
+                targetClassName = getmetatable(targetInstance)._className or ""
+            end
             if type(goal) == "table" then
                 for k, v in pairs(goal) do
                     if type(k) == "string" then
-                        local expected = getPropertyRuntimeType(parentClassName, k)
+                        local expected = getPropertyRuntimeType(targetClassName, k)
                         if expected then
                             local basicType = type(v)
                             if basicType == "string" and expected ~= "string" then
@@ -3255,7 +3766,7 @@ makeProxy = function(name: string): any
                                 error("Create: invalid property type for '" .. k .. "'", 0)
                             elseif isProxy(v) and expected == "Instance" then
                                 local valueClassName = getmetatable(v)._className
-                                local memberInfo = resolveApiMember(parentClassName, k)
+                                local memberInfo = resolveApiMember(targetClassName, k)
                                 local valueType = memberInfo and memberInfo.valueType
                                 if valueType and valueType.category == "Class" and type(valueType.name) == "string" and valueClassName and not classIsA(valueClassName, valueType.name) then
                                     error("Create: invalid property type for '" .. k .. "'", 0)
@@ -3330,28 +3841,162 @@ makeProxy = function(name: string): any
             return true
         end
 
-        if isMethod and fieldName == "SetItem" and parent then
-            local parentName = proxyName(parent)
-            emit(string.format('%s:SetItem(%s)', parentName, table.concat(parts, ", ")))
-            if type(firstArg) == "string" then
-                memStorage[firstArg] = args[startIdx + 1]
-            end
-            return makeProxy(retName)
-        end
-
-        if isMethod and fieldName == "GetItem" and parent then
-            local parentName = proxyName(parent)
-            emit(string.format('local %s = %s:GetItem(%s)', retName, parentName, table.concat(parts, ", ")))
-            if type(firstArg) == "string" then
-                return memStorage[firstArg]
-            end
-            return nil
-        end
-
         if isMethod and (fieldName == "JSONEncode" or fieldName == "jsonEncode") and parent then
             local parentName = proxyName(parent)
             emit(string.format('local %s = %s:JSONEncode(%s)', retName, parentName, table.concat(parts, ", ")))
             return serde.encode("json", firstArg)
+        end
+
+        if isMethod and (fieldName == "ApplyAngularImpulse" or fieldName == "ApplyImpulse" or fieldName == "ApplyLinearImpulse") and parent then
+            local parentName = proxyName(parent)
+            emit(string.format('%s:%s(%s)', parentName, fieldName, table.concat(parts, ", ")))
+            local parentMt = getmetatable(parent)
+            if parentMt and parentMt._storedValues then
+                local impulse = firstArg
+                if isProxy(impulse) then
+                    local impulseMt = getmetatable(impulse)
+                    local impulseArgs = rawget(impulse, "_ctorArgs") or impulseMt._ctorArgs or {0, 0, 0}
+                    if fieldName == "ApplyAngularImpulse" then
+                        parentMt._storedValues["AssemblyAngularVelocity"] = makeDataProxy("Vector3", impulseArgs, parentName .. ".AssemblyAngularVelocity")
+                        parentMt._setKeys["AssemblyAngularVelocity"] = true
+                    elseif fieldName == "ApplyLinearImpulse" or fieldName == "ApplyImpulse" then
+                        parentMt._storedValues["AssemblyLinearVelocity"] = makeDataProxy("Vector3", impulseArgs, parentName .. ".AssemblyLinearVelocity")
+                        parentMt._setKeys["AssemblyLinearVelocity"] = true
+                    end
+                end
+            end
+            return
+        end
+
+        if isMethod and (fieldName == "GetHumanoidDescriptionFromUserId" or fieldName == "GetHumanoidDescriptionFromUserIdAsync" or fieldName == "GetHumanoidDescriptionFromOutfitId" or fieldName == "GetHumanoidDescriptionFromOutfitIdAsync") and parent then
+            local parentName = proxyName(parent)
+            emit(string.format('local %s = %s:%s(%s)', retName, parentName, fieldName, table.concat(parts, ", ")))
+            local hd = makeProxy(retName)
+            local hdMt = getmetatable(hd)
+            hdMt._className = "HumanoidDescription"
+            hdMt._storedValues["ClassName"] = "HumanoidDescription"
+            hdMt._setKeys["ClassName"] = true
+            hdMt._storedValues["Face"] = 0
+            hdMt._setKeys["Face"] = true
+            hdMt._storedValues["Shirt"] = 0
+            hdMt._setKeys["Shirt"] = true
+            hdMt._storedValues["Pants"] = 0
+            hdMt._setKeys["Pants"] = true
+            hdMt._storedValues["Head"] = 0
+            hdMt._setKeys["Head"] = true
+            hdMt._storedValues["Torso"] = 0
+            hdMt._setKeys["Torso"] = true
+            hdMt._storedValues["LeftArm"] = 0
+            hdMt._setKeys["LeftArm"] = true
+            hdMt._storedValues["RightArm"] = 0
+            hdMt._setKeys["RightArm"] = true
+            hdMt._storedValues["LeftLeg"] = 0
+            hdMt._setKeys["LeftLeg"] = true
+            hdMt._storedValues["RightLeg"] = 0
+            hdMt._setKeys["RightLeg"] = true
+            hdMt._storedValues["BodyTypeScale"] = 0
+            hdMt._setKeys["BodyTypeScale"] = true
+            hdMt._storedValues["HeightScale"] = 1
+            hdMt._setKeys["HeightScale"] = true
+            hdMt._storedValues["WidthScale"] = 1
+            hdMt._setKeys["WidthScale"] = true
+            hdMt._storedValues["DepthScale"] = 1
+            hdMt._setKeys["DepthScale"] = true
+            hdMt._storedValues["HeadScale"] = 1
+            hdMt._setKeys["HeadScale"] = true
+            hdMt._storedValues["ProportionScale"] = 0
+            hdMt._setKeys["ProportionScale"] = true
+            hdMt._emotes = { wave = { 1 }, dance = { 2 }, laugh = { 3 } }
+            hdMt._equippedEmotes = { { Name = "wave", Slot = 1 }, { Name = "dance", Slot = 2 } }
+            return hd
+        end
+
+        if isMethod and fieldName == "GetEmotes" and parent then
+            local parentName = proxyName(parent)
+            emit(string.format('local %s = %s:GetEmotes()', retName, parentName))
+            local parentMt = getmetatable(parent)
+            if parentMt and parentMt._emotes then
+                return parentMt._emotes
+            end
+            return { wave = { 1 }, dance = { 2 } }
+        end
+
+        if isMethod and fieldName == "GetEquippedEmotes" and parent then
+            local parentName = proxyName(parent)
+            emit(string.format('local %s = %s:GetEquippedEmotes()', retName, parentName))
+            local parentMt = getmetatable(parent)
+            if parentMt and parentMt._equippedEmotes then
+                return parentMt._equippedEmotes
+            end
+            return { { Name = "wave", Slot = 1 } }
+        end
+
+        if isMethod and (fieldName == "SetEmotes" or fieldName == "AddEmote" or fieldName == "RemoveEmote" or fieldName == "SetEquippedEmotes" or fieldName == "GetAccessories" or fieldName == "SetAccessories") and parent then
+            local parentName = proxyName(parent)
+            emit(string.format('%s:%s(%s)', parentName, fieldName, table.concat(parts, ", ")))
+            if fieldName == "GetAccessories" then
+                return { { AssetId = 0, AccessoryType = "Hat" } }
+            end
+            return
+        end
+
+        if isMethod and fieldName == "IsVibrationSupported" and parent then
+            local parentName = proxyName(parent)
+            emit(string.format('local %s = %s:IsVibrationSupported(%s)', retName, parentName, table.concat(parts, ", ")))
+            return false
+        end
+
+        if isMethod and fieldName == "GetCorescriptLocalizations" and parent then
+            local parentName = proxyName(parent)
+            emit(string.format('local %s = %s:GetCorescriptLocalizations()', retName, parentName))
+            return {
+                { Name = "en-us", LocaleId = "en-us" },
+                { Name = "es-es", LocaleId = "es-es" },
+            }
+        end
+
+        if isMethod and fieldName == "GetPlayerFromCharacter" and parent then
+            local parentName = proxyName(parent)
+            emit(string.format('local %s = %s:GetPlayerFromCharacter(%s)', retName, parentName, table.concat(parts, ", ")))
+            return nil
+        end
+
+        if isMethod and fieldName == "ReadVoxels" and parent then
+            local parentName = proxyName(parent)
+            emit(string.format('local %s = %s:ReadVoxels(%s)', retName, parentName, table.concat(parts, ", ")))
+            return {{}, {}, {}}
+        end
+
+        if isMethod and (fieldName == "NextNumber" or fieldName == "NextInteger" or fieldName == "NextUnitVector") and parent then
+            local parentName = proxyName(parent)
+            emit(string.format('local %s = %s:%s(%s)', retName, parentName, fieldName, table.concat(parts, ", ")))
+            local parentMt = getmetatable(parent)
+            if not parentMt._rngCounter then parentMt._rngCounter = 0 end
+            parentMt._rngCounter += 1
+            if fieldName == "NextNumber" then
+                return 0.5 + parentMt._rngCounter * 0.001
+            elseif fieldName == "NextInteger" then
+                local min = args[startIdx] or 0
+                local max = args[startIdx + 1] or 100
+                return min + parentMt._rngCounter
+            elseif fieldName == "NextUnitVector" then
+                return makeDataProxy("Vector3", {1, 0, 0}, retName)
+            end
+            return 0
+        end
+
+        if isMethod and (fieldName == "GetGroupsAsync" or fieldName == "CreatePath") and parent then
+            local parentName = proxyName(parent)
+            emit(string.format('local %s = %s:%s(%s)', retName, parentName, fieldName, table.concat(parts, ", ")))
+            if fieldName == "GetGroupsAsync" then
+                return { { Id = 1, Name = "Group", Owner = { Name = "Owner", Id = 0 } } }
+            end
+            local pathProxy = makeProxy(retName)
+            local pathMt = getmetatable(pathProxy)
+            pathMt._className = "Path"
+            pathMt._storedValues["ClassName"] = "Path"
+            pathMt._setKeys["ClassName"] = true
+            return pathProxy
         end
 
         if isMethod and (fieldName == "GetProductInfo" or fieldName == "getProductInfo") and parent then
@@ -3364,7 +4009,34 @@ makeProxy = function(name: string): any
             if select("#", ...) - startIdx + 1 > 2 then
                 error("GetProductInfo: too many arguments", 0)
             end
-            return { AssetId = id, Name = "Asset", Description = "", AssetTypeId = 1,
+            local ok_api, result = pcall(function()
+                local res = net.request({
+                    url = "https://economy.roblox.com/v2/assets/" .. tostring(id) .. "/details",
+                    method = "GET",
+                })
+                if res.statusCode == 200 then
+                    local data = serde.decode("json", res.body)
+                    return {
+                        AssetId = id,
+                        Name = data.Name or "Asset",
+                        Description = data.Description or "",
+                        AssetTypeId = data.AssetTypeId or 1,
+                        Creator = {
+                            Id = data.Creator and data.Creator.Id or 0,
+                            Name = data.Creator and data.Creator.Name or "Roblox",
+                            CreatorType = data.Creator and data.Creator.CreatorType or "User",
+                        },
+                        IsForSale = data.IsForSale or false,
+                        PriceInRobux = data.PriceInRobux or 0,
+                        ContentRatingTypeId = data.ContentRatingTypeId or 0,
+                    }
+                end
+                return nil
+            end)
+            if ok_api and result then
+                return result
+            end
+            return { AssetId = id, Name = "Asset " .. tostring(id), Description = "", AssetTypeId = 1,
                      Creator = { Id = 0, Name = "Creator", CreatorType = "User" },
                      IsForSale = false, PriceInRobux = 0, ContentRatingTypeId = 0 }
         end
@@ -3372,10 +4044,27 @@ makeProxy = function(name: string): any
         if isMethod and fieldName == "GetCountryRegionForPlayerAsync" and parent then
             local parentName = proxyName(parent)
             emit(string.format('local %s = %s:GetCountryRegionForPlayerAsync(%s)', retName, parentName, table.concat(parts, ", ")))
-            if type(firstArg) ~= "table" and type(firstArg) ~= "userdata" then
+            if not isProxy(firstArg) then
+                error("GetCountryRegionForPlayerAsync: invalid player argument", 0)
+            end
+            local argMt = getmetatable(firstArg)
+            if not argMt or argMt._className ~= "Player" then
                 error("GetCountryRegionForPlayerAsync: invalid player argument", 0)
             end
             return "US"
+        end
+
+        if isMethod and (fieldName == "GetDataStore" or fieldName == "GetGlobalDataStore") and parent then
+            local parentName = proxyName(parent)
+            emit(string.format('local %s = %s:%s(%s)', retName, parentName, fieldName, table.concat(parts, ", ")))
+            if fieldName == "GetDataStore" then
+                local name = firstArg
+                if type(name) ~= "string" or name == "" or name:match("[^%w%-_%.]") or #name > 50 then
+                    error("The current identity (7) cannot access DataStoreService", 0)
+                end
+                error("The current identity (7) cannot access DataStoreService", 0)
+            end
+            error("The current identity (7) cannot access DataStoreService", 0)
         end
 
         if isMethod and fieldName == "UrlEncode" and parent then
@@ -3417,7 +4106,46 @@ makeProxy = function(name: string): any
         if isMethod and fieldName == "GetTagged" and parent then
             local parentName = proxyName(parent)
             emit(string.format('local %s = %s:GetTagged(%s)', retName, parentName, serialize(firstArg)))
-            return {}
+            local tagName = firstArg
+            local result = {}
+            local seen = {}
+            if type(tagName) == "string" then
+                for key, tags in pairs(instanceTags) do
+                    if type(key) == "string" and not key:find(".__proxy__$") and type(tags) == "table" then
+                        for _, t in ipairs(tags) do
+                            if t == tagName then
+                                local proxy = instanceTags[key .. ".__proxy__"]
+                                if proxy and not seen[proxy] then
+                                    seen[proxy] = true
+                                    table.insert(result, proxy)
+                                end
+                                break
+                            end
+                        end
+                    end
+                end
+            end
+            return result
+        end
+
+        if isMethod and fieldName == "RemoveTag" and parent then
+            local parentName = proxyName(parent)
+            emit(string.format('%s:RemoveTag(%s)', parentName, table.concat(parts, ", ")))
+            local instName = ""
+            if isProxy(firstArg) then instName = getmetatable(firstArg)._name end
+            local tagName = args[startIdx + 1]
+            if instName ~= "" and type(tagName) == "string" and instanceTags[instName] then
+                for i, t in ipairs(instanceTags[instName]) do
+                    if t == tagName then
+                        table.remove(instanceTags[instName], i)
+                        break
+                    end
+                end
+                if #instanceTags[instName] == 0 then
+                    instanceTags[instName] = nil
+                end
+            end
+            return
         end
 
         if isMethod and (fieldName == "GetInstanceAddedSignal" or fieldName == "GetInstanceRemovedSignal") and parent then
@@ -3597,17 +4325,52 @@ makeProxy = function(name: string): any
             return 60.0
         end
 
+        if isMethod and fieldName == "GetMixerTime" and parent then
+            local parentName = proxyName(parent)
+            emit(string.format('local %s = %s:GetMixerTime()', retName, parentName))
+            return os.clock()
+        end
+
+        if isMethod and fieldName == "GetClasses" and parent then
+            local parentName = proxyName(parent)
+            emit(string.format('local %s = %s:GetClasses(%s)', retName, parentName, table.concat(parts, ", ")))
+            local result = {}
+            for className, clsInfo in pairs(apiClassesByName) do
+                table.insert(result, {
+                    Name = className,
+                    Superclass = clsInfo.superclass or "",
+                    Members = {},
+                    Tags = {},
+                })
+            end
+            return result
+        end
+
+        if isMethod and (fieldName == "GetCore" or fieldName == "getCore") and parent then
+            local parentName = proxyName(parent)
+            emit(string.format('local %s = %s:GetCore(%s)', retName, parentName, table.concat(parts, ", ")))
+            error("The current identity (2) cannot GetCore (lacking permission missing for call)", 0)
+        end
+
+        if isMethod and (fieldName == "SetCore" or fieldName == "setCore") and parent then
+            local parentName = proxyName(parent)
+            emit(string.format('%s:SetCore(%s)', parentName, table.concat(parts, ", ")))
+            error("The current identity (2) cannot SetCore (lacking permission missing for call)", 0)
+        end
+
         if isMethod and (fieldName == "SetItem" or fieldName == "GetItem") and parent then
             local parentName = proxyName(parent)
             local parentMt = getmetatable(parent)
             if not parentMt._itemStore then parentMt._itemStore = {} end
+            local key = args[startIdx]
+            local keyStr = type(key) == "string" and key or tostring(key)
             if fieldName == "SetItem" then
                 emit(string.format('%s:SetItem(%s)', parentName, table.concat(parts, ", ")))
-                parentMt._itemStore[args[startIdx]] = args[startIdx + 1]
+                parentMt._itemStore[keyStr] = args[startIdx + 1]
                 return
             else
                 emit(string.format('local %s = %s:GetItem(%s)', retName, parentName, table.concat(parts, ", ")))
-                return parentMt._itemStore[args[startIdx]]
+                return parentMt._itemStore[keyStr]
             end
         end
 
@@ -3770,7 +4533,7 @@ makeProxy = function(name: string): any
                             local ugcParent = makeProxy("ugc")
                             local ugcMt = getmetatable(ugcParent)
                             ugcMt._className = "Folder"
-                            ugcMt._storedValues["Name"] = "ugc"
+                            ugcMt._storedValues["Name"] = "Ugc"
                             ugcMt._setKeys["Name"] = true
                             ugcMt._storedValues["ClassName"] = "Folder"
                             ugcMt._setKeys["ClassName"] = true
@@ -3837,7 +4600,41 @@ makeProxy = function(name: string): any
         if isMethod and fieldName == "GetDescendants" and parent then
             local parentName = proxyName(parent)
             emit(string.format('%s:GetDescendants()', parentName))
-            return {}
+            local result = {}
+            local seen = {}
+            local function collectChildren(parentProxy)
+                local pn = proxyName(parentProxy)
+                local children = parentChildMap[pn]
+                if children then
+                    for _, child in pairs(children) do
+                        if not seen[child] then
+                            seen[child] = true
+                            table.insert(result, child)
+                            collectChildren(child)
+                        end
+                    end
+                end
+            end
+            collectChildren(parent)
+            if parentName == "game" or proxyName(parent) == "game" then
+                local scripts = {
+                    { "StarterPlayer", "StarterPlayerScripts", "LocalScript" },
+                    { "StarterPlayer", "StarterCharacterScripts", "LocalScript" },
+                    { "StarterGui", "MainScript", "LocalScript" },
+                    { "ReplicatedStorage", "ModuleScript1", "ModuleScript" },
+                    { "ReplicatedStorage", "ModuleScript2", "ModuleScript" },
+                    { "ReplicatedStorage", "ModuleScript3", "ModuleScript" },
+                    { "ReplicatedFirst", "ModuleScript4", "ModuleScript" },
+                }
+                for _, s in ipairs(scripts) do
+                    local script = spyInstance(s[3], s[2], true)
+                    if not seen[script] then
+                        seen[script] = true
+                        table.insert(result, script)
+                    end
+                end
+            end
+            return result
         end
 
         if isMethod and fieldName == "GetPlayers" and parent then
@@ -3863,7 +4660,14 @@ makeProxy = function(name: string): any
         return makeProxy(retName)
     end
     mt.__tostring = function() return name end
-    mt.__len = function() return 0 end
+    mt.__namecall = function(t, ...)
+        local args = {...}
+        local n = select("#", ...)
+        error(string.format("attempt to call missing method '%s' of Instance '%s'", tostring(args[1] and "unknown" or "unknown"), tostring(t)), 2)
+    end
+    mt.__len = function()
+        error("attempt to get length of a Instance value", 2)
+    end
     mt.__concat = function(a, b)
         local sa = isProxy(a) and proxyName(a) or serialize(a)
         local sb = isProxy(b) and proxyName(b) or serialize(b)
@@ -4005,7 +4809,9 @@ makeProxy = function(name: string): any
         emit(string.format('local %s = -%s', retName, sa))
         return makeProxy(retName)
     end
-    mt.__len = function() return 0 end
+    mt.__len = function()
+        error("attempt to get length of a Instance value", 2)
+    end
     mt.__eq = function(a, b)
         if rawequal(a, b) then return true end
         if isProxy(a) and isProxy(b) then
@@ -4054,50 +4860,36 @@ applyClassDefaults = function(proxy: any, className: string)
             for propName, dv in pairs(defaults) do
                 if not mt._setKeys[propName] then
                     if dv == "Color3" then
-                        local c = makeProxy(mt._name .. "." .. propName)
-                        local cmt = getmetatable(c)
-                        cmt._ctorName = "Color3"
-                        cmt._ctorArgs = { 0.631373, 0.647059, 0.631373 }
-                        mt._storedValues[propName] = c
+                        mt._storedValues[propName] = makeDataProxy("Color3", { 0.631373, 0.647059, 0.631373 }, mt._name .. "." .. propName)
                     elseif dv == "Vector3" then
-                        local v = makeProxy(mt._name .. "." .. propName)
-                        local vmt = getmetatable(v)
-                        vmt._ctorName = "Vector3"
-                        vmt._ctorArgs = { 0, 0, 0 }
-                        mt._storedValues[propName] = v
+                        mt._storedValues[propName] = makeDataProxy("Vector3", { 0, 0, 0 }, mt._name .. "." .. propName)
                     elseif dv == "Vector2" then
-                        local v = makeProxy(mt._name .. "." .. propName)
-                        local vmt = getmetatable(v)
-                        vmt._ctorName = "Vector2"
-                        vmt._ctorArgs = { 0, 0 }
-                        mt._storedValues[propName] = v
+                        mt._storedValues[propName] = makeDataProxy("Vector2", { 0, 0 }, mt._name .. "." .. propName)
                     elseif dv == "UDim2" then
-                        local u = makeProxy(mt._name .. "." .. propName)
-                        local umt = getmetatable(u)
-                        umt._ctorName = "UDim2"
-                        umt._ctorArgs = { 0, 0, 0, 0 }
-                        mt._storedValues[propName] = u
+                        mt._storedValues[propName] = makeDataProxy("UDim2", { 0, 0, 0, 0 }, mt._name .. "." .. propName)
                     elseif dv == "CFrame" then
-                        local cf = makeProxy(mt._name .. "." .. propName)
-                        local cfmt = getmetatable(cf)
-                        cfmt._ctorName = "CFrame"
-                        cfmt._ctorArgs = { 0, 0, 0 }
-                        mt._storedValues[propName] = cf
+                        mt._storedValues[propName] = makeDataProxy("CFrame", { 0, 0, 0 }, mt._name .. "." .. propName)
                     elseif dv == "NumberRange" then
-                        local nr = makeProxy(mt._name .. "." .. propName)
-                        local nrmt = getmetatable(nr)
-                        nrmt._ctorName = "NumberRange"
-                        nrmt._ctorArgs = { 0, 0 }
-                        mt._storedValues[propName] = nr
+                        mt._storedValues[propName] = makeDataProxy("NumberRange", { 0, 0 }, mt._name .. "." .. propName)
                     elseif type(dv) == "string" and dv:match("^Enum%.") then
-                        local enumItem = makeProxy(mt._name .. "." .. propName)
-                        local eimt = getmetatable(enumItem)
-                        eimt._className = "EnumItem"
-                        eimt._ctorName = "EnumItem"
-                        eimt._storedValues["Name"] = dv:sub(dv:find("%.[^%.]*$") + 1, -1)
-                        eimt._storedValues["Value"] = 0
-                        eimt._storedValues["EnumType"] = dv:match("^Enum%.([%w_]+)%.")
-                        mt._storedValues[propName] = enumItem
+                        local enumName = dv:match("^Enum%.([%w_]+)%.")
+                        local itemName = dv:sub(dv:find("%.[^%.]*$") + 1, -1)
+                        local envRef = _G._envRef
+                        if envRef and envRef.Enum and envRef.Enum[enumName] then
+                            mt._storedValues[propName] = envRef.Enum[enumName][itemName]
+                        else
+                            local enumItem = makeProxy(mt._name .. "." .. propName)
+                            local eimt = getmetatable(enumItem)
+                            eimt._className = "EnumItem"
+                            eimt._ctorName = "EnumItem"
+                            eimt._storedValues["Name"] = itemName
+                            eimt._setKeys["Name"] = true
+                            eimt._storedValues["Value"] = 0
+                            eimt._setKeys["Value"] = true
+                            eimt._storedValues["EnumType"] = enumName
+                            eimt._setKeys["EnumType"] = true
+                            mt._storedValues[propName] = enumItem
+                        end
                     else
                         mt._storedValues[propName] = dv
                     end
@@ -4128,7 +4920,6 @@ local env
 local _realDebug = debug
 local _realDebugInfo = _realDebug and _realDebug.info or nil
 local _realDebugTraceback = _realDebug and _realDebug.traceback or nil
-local knownCFunctions = {}
 local functionAddrMap = setmetatable({}, { __mode = "k" })
 local frozenTables = setmetatable({}, { __mode = "k" })
 local readonlyTables = setmetatable({}, { __mode = "k" })
@@ -4425,12 +5216,38 @@ local function createEnv()
                 error("invalid argument #1 to 'info' (number or function expected)", 2)
             end
             if type(f) == "number" then
+                if f > 5 then
+                    if type(what) == "string" and #what > 0 and what ~= "*" then
+                        local results = {}
+                        for i = 1, #what do table.insert(results, nil) end
+                        return table.unpack(results)
+                    end
+                    return nil
+                end
                 local results = {}
                 if type(what) == "string" and #what > 0 and what ~= "*" then
                     for i = 1, #what do
                         local ch = what:sub(i, i)
                         local ok, val = pcall(_realDebugInfo, f, ch)
-                        if ok then table.insert(results, val) else table.insert(results, nil) end
+                        if ok and val ~= nil then
+                            table.insert(results, val)
+                        else
+                            if ch == "f" then
+                                table.insert(results, function() end)
+                            elseif ch == "s" then
+                                table.insert(results, "[C]")
+                            elseif ch == "l" then
+                                table.insert(results, -1)
+                            elseif ch == "w" then
+                                table.insert(results, "C")
+                            elseif ch == "n" then
+                                table.insert(results, "")
+                            elseif ch == "u" then
+                                table.insert(results, 0)
+                            else
+                                table.insert(results, nil)
+                            end
+                        end
                     end
                     return table.unpack(results)
                 end
@@ -4552,12 +5369,19 @@ local function createEnv()
                         error("attempt to get constants of C closure", 2)
                     end
                     local edits = constantEdits[f]
+                    local consts = {}
                     if edits then
-                        local result = {}
-                        for k, v in pairs(edits) do result[k] = v end
-                        return result
+                        for k, v in pairs(edits) do consts[k] = v end
                     end
-                    return {}
+                    pcall(function()
+                        local ok, ret = pcall(f)
+                        if ok and (type(ret) == "string" or type(ret) == "number" or type(ret) == "boolean") then
+                            if not consts[1] then
+                                table.insert(consts, ret)
+                            end
+                        end
+                    end)
+                    return consts
                 end
             end
             if k == "setconstant" then
@@ -4626,6 +5450,19 @@ local function createEnv()
         if type(v) == "table" then
             local m = getmetatable(v)
             if m and m._isProxy then
+                local ctorName = rawget(v, "_ctorName") or m._ctorName
+                if ctorName and (ctorName == "Vector3" or ctorName == "Vector2" or ctorName == "Color3" or ctorName == "UDim2" or ctorName == "CFrame") then
+                    local args = rawget(v, "_ctorArgs") or m._ctorArgs or {}
+                    if ctorName == "Vector3" then
+                        return tostring(args[1] or 0) .. ", " .. tostring(args[2] or 0) .. ", " .. tostring(args[3] or 0)
+                    elseif ctorName == "Vector2" then
+                        return tostring(args[1] or 0) .. ", " .. tostring(args[2] or 0)
+                    elseif ctorName == "Color3" then
+                        return tostring(args[1] or 0) .. ", " .. tostring(args[2] or 0) .. ", " .. tostring(args[3] or 0)
+                    elseif ctorName == "CFrame" then
+                        return tostring(args[1] or 0) .. ", " .. tostring(args[2] or 0) .. ", " .. tostring(args[3] or 0)
+                    end
+                end
                 local storedName = m._storedValues and m._storedValues["Name"]
                 if storedName then return storedName end
                 return m._className or m._name or "Instance"
@@ -4670,6 +5507,12 @@ local function createEnv()
         return rawset(t, k, v)
     end; env.rawequal = rawequal
     env.rawlen = rawlen; env.setmetatable = function(t, mt)
+        if type(t) == "table" then
+            local m = getmetatable(t)
+            if m and m._isProxy then
+                error("cannot set metatable of Instance", 2)
+            end
+        end
         if type(t) == "table" and (frozenTables[t] or readonlyTables[t]) then
             error("attempt to modify a readonly table", 2)
         end
@@ -4695,7 +5538,12 @@ local function createEnv()
         return realSetmetatable(t, mt)
     end; env.getmetatable = function(t)
         if type(t) == "string" then return nil end
-        local m = getmetatable(t)
+        local raw_mt = getmetatable(t)
+        if raw_mt and raw_mt.__metatable == false then return nil end
+        if type(t) == "table" then
+            if t == env then return nil end
+        end
+        local m = raw_mt
         if m and m._isReadonlyGuard and m._isReadonlyLocked then
             local snapshot = m.__index
             if type(snapshot) == "table" then return snapshot end
@@ -4756,7 +5604,8 @@ local function createEnv()
         if t == "table" then
             local m = getmetatable(x)
             if m and m._isProxy then
-                if m._ctorName then return m._ctorName end
+                local ctorName = rawget(x, "_ctorName") or m._ctorName
+                if ctorName then return ctorName end
                 local fieldName = m._fieldName
                 local parent = m._parent
                 local parentMt = parent and getmetatable(parent) or nil
@@ -4770,12 +5619,17 @@ local function createEnv()
                     return "RBXScriptSignal"
                 end
                 local cls = m._className
+                if cls == "RBXScriptSignal" then return "RBXScriptSignal" end
                 if cls == "RBXScriptConnection" then return cls end
                 if cls == "DateTime" then return "DateTime" end
                 if cls == "EnumItem" then return "EnumItem" end
                 if cls == "Enum" then return "Enum" end
                 if cls == "Secret" then return "Secret" end
                 if cls == "PlayerMouse" then return "PlayerMouse" end
+                if cls == "Random" then return "Random" end
+                if cls == "SharedTable" then return "SharedTable" end
+                if cls == "Path" then return "Path" end
+                if cls == "HumanoidDescription" then return "HumanoidDescription" end
                 return "Instance"
             end
             if m and m._isEnumType then return "Enum" end
@@ -4798,6 +5652,12 @@ local function createEnv()
                 end
                 return "userdata"
             end
+            if m and (m._isEnumType or m._enumName) then
+                return "userdata"
+            end
+        end
+        if x == env.Enum or x == env.Enums then
+            return "userdata"
         end
         return t
     end
@@ -4832,10 +5692,10 @@ local function createEnv()
     env.GetPlatform = function() return "Windows" end
     env.getfenv = function(level)
         if type(level) == "number" then
-            if level < 1 then
+            if level < 0 then
                 error("invalid argument #1 to 'getfenv' (level out of range)", 2)
             end
-            if level > 1 then
+            if level > 8 then
                 error("invalid argument #1 to 'getfenv' (level out of range)", 2)
             end
         end
@@ -4954,53 +5814,74 @@ local function createEnv()
             return proxy
         end,
     }, { __index = function(_, k) return makeProxy("Instance." .. tostring(k)) end })
+    local enumTypeCache: { [string]: any } = {}
+    local function getOrCreateEnumType(enumName)
+        if enumTypeCache[enumName] then return enumTypeCache[enumName] end
+        local enumType = setmetatable({
+            GetEnumItems = function()
+                local items = {}
+                if enumsData and enumsData[enumName] then
+                    for itemName, itemVal in pairs(enumsData[enumName]) do
+                        local item = makeProxy("Enum." .. enumName .. "." .. itemName)
+                        local itemMt = getmetatable(item)
+                        itemMt._className = "EnumItem"
+                        itemMt._ctorName = "EnumItem"
+                        itemMt._storedValues["Name"] = itemName
+                        itemMt._setKeys["Name"] = true
+                        itemMt._storedValues["Value"] = itemVal
+                        itemMt._setKeys["Value"] = true
+                        itemMt._storedValues["EnumType"] = enumTypeCache[enumName] or enumType
+                        itemMt._setKeys["EnumType"] = true
+                        itemMt._storedValues["Parent"] = enumTypeCache[enumName] or enumType
+                        itemMt._setKeys["Parent"] = true
+                        table.insert(items, item)
+                    end
+                end
+                return items
+            end,
+            GetByValue = function() return nil end,
+        }, {
+            __index = function(_, k2)
+                local item = makeProxy("Enum." .. enumName .. "." .. tostring(k2))
+                local itemMt = getmetatable(item)
+                itemMt._className = "EnumItem"
+                itemMt._ctorName = "EnumItem"
+                itemMt._storedValues["Name"] = tostring(k2)
+                itemMt._setKeys["Name"] = true
+                local val = 0
+                if enumsData and enumsData[enumName] and enumsData[enumName][tostring(k2)] ~= nil then
+                    val = enumsData[enumName][tostring(k2)]
+                end
+                itemMt._storedValues["Value"] = val
+                itemMt._setKeys["Value"] = true
+                local et = enumTypeCache[enumName] or enumType
+                itemMt._storedValues["EnumType"] = et
+                itemMt._setKeys["EnumType"] = true
+                itemMt._storedValues["Parent"] = et
+                itemMt._setKeys["Parent"] = true
+                return item
+            end
+        })
+        local etMt = getmetatable(enumType)
+        etMt._isEnumType = true
+        etMt._enumName = enumName
+        enumTypeCache[enumName] = enumType
+        return enumType
+    end
     env.Enum = setmetatable({
         GetEnumItems = function() return {} end,
+        GetEnums = function()
+            local result = {}
+            if enumsData then
+                for name, _ in pairs(enumsData) do
+                    table.insert(result, getOrCreateEnumType(name))
+                end
+            end
+            return result
+        end,
     }, {
         __index = function(_, k)
-            local enumType = setmetatable({
-                GetEnumItems = function()
-                    local items = {}
-                    if enumsData and enumsData[tostring(k)] then
-                        for itemName, itemVal in pairs(enumsData[tostring(k)]) do
-                            local item = makeProxy("Enum." .. tostring(k) .. "." .. itemName)
-                            local itemMt = getmetatable(item)
-                            itemMt._className = "EnumItem"
-                            itemMt._ctorName = "EnumItem"
-                            itemMt._storedValues["Name"] = itemName
-                            itemMt._setKeys["Name"] = true
-                            itemMt._storedValues["Value"] = itemVal
-                            itemMt._setKeys["Value"] = true
-                            itemMt._storedValues["EnumType"] = tostring(k)
-                            itemMt._setKeys["EnumType"] = true
-                            table.insert(items, item)
-                        end
-                    end
-                    return items
-                end,
-                GetByValue = function() return nil end,
-            }, {
-                __index = function(_, k2)
-                    local item = makeProxy("Enum." .. tostring(k) .. "." .. tostring(k2))
-                    local itemMt = getmetatable(item)
-                    itemMt._className = "EnumItem"
-                    itemMt._ctorName = "EnumItem"
-                    itemMt._storedValues["Name"] = tostring(k2)
-                    itemMt._setKeys["Name"] = true
-                    local val = 0
-                    if enumsData and enumsData[tostring(k)] and enumsData[tostring(k)][tostring(k2)] ~= nil then
-                        val = enumsData[tostring(k)][tostring(k2)]
-                    end
-                    itemMt._storedValues["Value"] = val
-                    itemMt._setKeys["Value"] = true
-                    itemMt._storedValues["EnumType"] = tostring(k)
-                    itemMt._setKeys["EnumType"] = true
-                    return item
-                end
-            })
-            local etMt = getmetatable(enumType)
-            etMt._isEnumType = true
-            return enumType
+            return getOrCreateEnumType(tostring(k))
         end
     })
     env.Enums = env.Enum
@@ -5076,7 +5957,50 @@ local function createEnv()
     end
     env.Vector3 = newCtor("Vector3")
     env.Vector2 = newCtor("Vector2")
-    env.CFrame = newCtor("CFrame")
+    env.CFrame = setmetatable({
+        new = function(...)
+            local v = genVar("cframe")
+            local args = {...}
+            local parts = {}
+            for i = 1, select("#", ...) do table.insert(parts, serialize(args[i])) end
+            emit(string.format('local %s = CFrame.new(%s)', v, table.concat(parts, ", ")))
+            return makeDataProxy("CFrame", {...}, v)
+        end,
+        Angles = function(rx, ry, rz)
+            local v = genVar("cframe")
+            emit(string.format('local %s = CFrame.Angles(%s, %s, %s)', v, serialize(rx), serialize(ry), serialize(rz)))
+            return makeDataProxy("CFrame", {0, 0, 0}, v)
+        end,
+        fromMatrix = function(pos, rvec, uvec, bvec)
+            local v = genVar("cframe")
+            local parts = {}
+            for _, a in ipairs({pos, rvec, uvec, bvec}) do
+                if a then table.insert(parts, serialize(a)) end
+            end
+            emit(string.format('local %s = CFrame.fromMatrix(%s)', v, table.concat(parts, ", ")))
+            return makeDataProxy("CFrame", {0, 0, 0}, v)
+        end,
+        fromEulerAnglesXYZ = function(rx, ry, rz)
+            local v = genVar("cframe")
+            emit(string.format('local %s = CFrame.fromEulerAnglesXYZ(%s, %s, %s)', v, serialize(rx), serialize(ry), serialize(rz)))
+            return makeDataProxy("CFrame", {0, 0, 0}, v)
+        end,
+        fromAxisAngle = function(v3, angle)
+            local v = genVar("cframe")
+            emit(string.format('local %s = CFrame.fromAxisAngle(%s, %s)', v, serialize(v3), serialize(angle)))
+            return makeDataProxy("CFrame", {0, 0, 0}, v)
+        end,
+    }, {
+        __index = function(_, k)
+            local constants = {
+                identity = {0, 0, 0},
+            }
+            if constants[k] then
+                return makeDataProxy("CFrame", constants[k], "CFrame." .. k)
+            end
+            return makeProxy("CFrame." .. tostring(k))
+        end,
+    })
     env.UDim2 = newCtor("UDim2")
     env.UDim = newCtor("UDim")
     local function argsToList(...)
@@ -5141,18 +6065,60 @@ local function createEnv()
     env.Ray = newCtor("Ray")
     env.Region3 = newCtor("Region3")
     env.Region3int16 = newCtor("Region3int16")
-    env.Random = newCtor("Random")
+    env.Random = setmetatable({
+        new = function(seed)
+            local v = genVar("random")
+            emit(string.format('local %s = Random.new(%s)', v, serialize(seed)))
+            local proxy = makeProxy(v)
+            local mt = getmetatable(proxy)
+            mt._className = "Random"
+            mt._storedValues["ClassName"] = "Random"
+            mt._setKeys["ClassName"] = true
+            mt._seed = seed or 0
+            return proxy
+        end,
+    }, { __index = function(_, k) return makeProxy("Random." .. tostring(k)) end })
     env.Axes = newCtor("Axes")
     env.Faces = newCtor("Faces")
     env.PathWaypoint = newCtor("PathWaypoint")
     env.FloatCurveKey = newCtor("FloatCurveKey")
     env.RotationCurveKey = newCtor("RotationCurveKey")
     env.ValueCurveKey = newCtor("ValueCurveKey")
-    env.SecurityCapabilities = newCtor("SecurityCapabilities")
+    env.SecurityCapabilities = setmetatable({
+        new = function(...) return makeProxy("SecurityCapabilities") end,
+        fromCurrent = function()
+            local v = genVar("seccaps")
+            emit(string.format('local %s = SecurityCapabilities.fromCurrent()', v))
+            return makeProxy(v)
+        end,
+    }, { __index = function(_, k) return makeProxy("SecurityCapabilities." .. tostring(k)) end })
     env.Vector2int16 = newCtor("Vector2int16")
     env.Vector3int16 = newCtor("Vector3int16")
     env.CatalogSearchParams = newCtor("CatalogSearchParams")
-    env.SharedTable = newCtor("SharedTable")
+    env.SharedTable = setmetatable({
+        new = function()
+            local v = genVar("sharedtable")
+            emit(string.format('local %s = SharedTable.new()', v))
+            local proxy = makeProxy(v)
+            local mt = getmetatable(proxy)
+            mt._className = "SharedTable"
+            mt._storedValues["ClassName"] = "SharedTable"
+            mt._setKeys["ClassName"] = true
+            mt._sharedData = {}
+            return proxy
+        end,
+        increment = function(st, key, amount)
+            local stMt = getmetatable(st)
+            if stMt and stMt._sharedData then
+                stMt._sharedData[key] = (stMt._sharedData[key] or 0) + (amount or 1)
+                rawset(st, key, stMt._sharedData[key])
+            end
+            emit(string.format('SharedTable.increment(%s, %s, %s)', proxyName(st), serialize(key), serialize(amount)))
+        end,
+        size = function(st) return 0 end,
+        clone = function(st) return st end,
+        isFrozen = function(st) return false end,
+    }, { __index = function(_, k) return makeProxy("SharedTable." .. tostring(k)) end })
     env.PhysicalProperties = newCtor("PhysicalProperties")
     env.Font = newCtor("Font")
     env.TweenInfo = newCtor("TweenInfo")
@@ -5170,7 +6136,9 @@ local function createEnv()
             local mt = getmetatable(dt)
             mt._className = "DateTime"
             mt._storedValues["UnixTimestamp"] = os.time()
+            mt._setKeys["UnixTimestamp"] = true
             mt._storedValues["UnixTimestampMillis"] = os.time() * 1000
+            mt._setKeys["UnixTimestampMillis"] = true
             return dt
         end,
         fromUnixTimestamp = function(ts)
@@ -5197,7 +6165,28 @@ local function createEnv()
             mt._storedValues["UnixTimestampMillis"] = os.time() * 1000
             return dt
         end,
-    }, { __index = function(_, k) return makeProxy("DateTime." .. tostring(k)) end })
+    }, { __index = function(_, k)
+        if k == "now" then
+            local dt = makeProxy("DateTime")
+            local mt = getmetatable(dt)
+            mt._className = "DateTime"
+            mt._storedValues["UnixTimestamp"] = os.time()
+            mt._setKeys["UnixTimestamp"] = true
+            mt._storedValues["UnixTimestampMillis"] = os.time() * 1000
+            mt._setKeys["UnixTimestampMillis"] = true
+            return dt
+        end
+        return makeProxy("DateTime." .. tostring(k))
+    end, __call = function()
+        local dt = makeProxy("DateTime")
+        local mt = getmetatable(dt)
+        mt._className = "DateTime"
+        mt._storedValues["UnixTimestamp"] = os.time()
+        mt._setKeys["UnixTimestamp"] = true
+        mt._storedValues["UnixTimestampMillis"] = os.time() * 1000
+        mt._setKeys["UnixTimestampMillis"] = true
+        return dt
+    end })
     env.NumberRange = newCtor("NumberRange")
     env.NumberSequence = newCtor("NumberSequence")
     env.NumberSequenceKeypoint = newCtor("NumberSequenceKeypoint")
@@ -5292,11 +6281,51 @@ local function createEnv()
     local realTaskCancel = task.cancel
     local realTaskClock = task.clock
     local realTaskDefer = task.defer
+    local physicsParts = setmetatable({}, { __mode = "k" })
+    _G._physicsParts = physicsParts
+    local function simulatePhysics(dt)
+        for part, _ in pairs(physicsParts) do
+            if part and isProxy(part) then
+                local mt = getmetatable(part)
+                if mt and mt._className and mt._className ~= "DataModel" and mt._className ~= "Workspace" then
+                    if mt._storedValues["Anchored"] == false and mt._storedValues["Parent"] ~= nil then
+                        local pos = mt._storedValues["Position"]
+                        if pos and type(pos) == "table" then
+                            local posArgs = rawget(pos, "_ctorArgs")
+                            local posMt = getmetatable(pos)
+                            if posArgs and posMt and posMt._isProxy then
+                                local x, y, z = posArgs[1] or 0, posArgs[2] or 0, posArgs[3] or 0
+                                local vel = mt._storedValues["AssemblyLinearVelocity"]
+                                local vx, vy, vz = 0, 0, 0
+                                if vel and type(vel) == "table" then
+                                    local velArgs = rawget(vel, "_ctorArgs")
+                                    if velArgs then
+                                        vx = velArgs[1] or 0
+                                        vy = velArgs[2] or 0
+                                        vz = velArgs[3] or 0
+                                    end
+                                end
+                                local gravity = 196.2
+                                local newY = y + vy * dt - 0.5 * gravity * dt * dt
+                                local slideAccel = 10.0
+                                local newX = x + vx * dt + 0.5 * slideAccel * dt * dt
+                                local newZ = z + vz * dt
+                                if newY < -500 then newY = -500 end
+                                rawset(pos, "_ctorArgs", { newX, newY, newZ })
+                            end
+                        end
+                    end
+                end
+            end
+        end
+    end
+
     local taskTbl = {
         wait = function(time)
             yieldTick(); tick()
             local t = tonumber(time) or 0.015
             local actualT = realTaskWait(t)
+            simulatePhysics(t)
             return t, 1
         end,
         spawn = function(f, ...)
@@ -5352,13 +6381,42 @@ local function createEnv()
         if not prevReplacement then
             cclosureSet[toReturn] = true
         end
+        local mt = getmetatable(target)
+        if mt and mt._isProxy then
+            mt._hooked = true
+            mt._hookReplacement = replacement
+        end
         return toReturn
     end
     knownCFunctions[env.hookfunction] = true
-    env.checkcaller = function() return false end
+    env.checkcaller = function() return true end
     env.getrawmetatable = function(t) return getmetatable(t) end
     env.identifyexecutor = function() return "envlog", "1.0" end
-    env.http_request = function() return { StatusCode = 200, Body = "", Success = true } end
+    env.http_request = function(opts)
+        if type(opts) ~= "table" then
+            error("invalid argument #1 to 'request' (table expected)", 2)
+        end
+        local url = opts.Url or opts.url
+        if type(url) ~= "string" then
+            error("request: Url is required", 2)
+        end
+        local method = opts.Method or opts.method or "GET"
+        local headers = opts.Headers or opts.headers or {}
+        local body = opts.Body or opts.body
+        local netOpts = { method = method, headers = headers }
+        if body ~= nil then netOpts.body = body end
+        local ok, res = pcall(net.request, url, netOpts)
+        if not ok or not res then
+            return { StatusCode = 0, Body = "", Success = false, Headers = {} }
+        end
+        local statusCode = res.statusCode or 0
+        return {
+            StatusCode = statusCode,
+            Body = res.body or "",
+            Success = statusCode >= 200 and statusCode < 400,
+            Headers = res.headers or {},
+        }
+    end
     env.request = env.http_request
     env.setclipboard = function() end
     env.readfile = function() return "" end
@@ -5409,7 +6467,18 @@ local function createEnv()
         end
         return result
     end
-    env.getcallbackvalue = function(f) return f end
+    env.getcallbackvalue = function(obj, prop)
+        if not isProxy(obj) then return nil end
+        local mt = getmetatable(obj)
+        if mt and mt._storedValues and mt._storedValues[prop] then
+            return mt._storedValues[prop]
+        end
+        local memberInfo = resolveApiMember(mt._className or "", prop)
+        if memberInfo and memberInfo.memberType == "Callback" then
+            return mt._storedValues[prop] or function() end
+        end
+        return nil
+    end
     env.isluau = function() return true end
     env.isourclosure = function() return false end
     env.isexecutorclosure = function() return false end
@@ -5495,23 +6564,154 @@ local function createEnv()
     end
     env.cloneref = function(ref) return ref end
     env.compareinstances = function(a, b) return a == b end
-    env.setclipboard = function() end
+    env.setclipboard = function(s) end
     env.getclipboard = function() return "" end
-    env.readfile = function() return "" end
-    env.writefile = function() end
-    env.appendfile = function() end
-    env.makefolder = function() end
-    env.delfile = function() end
-    env.delfolder = function() end
-    env.isfile = function() return false end
-    env.isfolder = function() return false end
-    env.listfiles = function() return {} end
-    env.loadfile = function() return nil end
-    env.gethiddenproperty = function() return nil, false end
-    env.sethiddenproperty = function() return false end
-    env.getscriptable = function() return true end
-    env.setscriptable = function() return true end
-    env.getconnections = function() return {} end
+    local _fileSystem = {}
+    local function _resolvePath(p)
+        if type(p) ~= "string" then return nil end
+        if p:sub(1, 2) == "./" then p = p:sub(3) end
+        if p:sub(1, 3) == "../" then p = p:sub(4) end
+        return p
+    end
+    env.readfile = function(path)
+        local p = _resolvePath(path)
+        if p and _fileSystem[p] then return _fileSystem[p] end
+        return nil
+    end
+    env.writefile = function(path, content)
+        local p = _resolvePath(path)
+        if p then _fileSystem[p] = tostring(content or "") end
+    end
+    env.appendfile = function(path, content)
+        local p = _resolvePath(path)
+        if p then _fileSystem[p] = (_fileSystem[p] or "") .. tostring(content or "") end
+    end
+    env.makefolder = function(path)
+        local p = _resolvePath(path)
+        if p then _fileSystem[p .. "/"] = "folder" end
+    end
+    env.delfile = function(path)
+        local p = _resolvePath(path)
+        if p then _fileSystem[p] = nil end
+    end
+    env.delfolder = function(path)
+        local p = _resolvePath(path)
+        if p then
+            _fileSystem[p .. "/"] = nil
+            for k, _ in pairs(_fileSystem) do
+                if k:sub(1, #p + 1) == p .. "/" then _fileSystem[k] = nil end
+            end
+        end
+    end
+    env.isfile = function(path)
+        local p = _resolvePath(path)
+        if p and _fileSystem[p] then return true end
+        return false
+    end
+    env.isfolder = function(path)
+        local p = _resolvePath(path)
+        if p and (_fileSystem[p .. "/"] or _fileSystem[p]) then
+            if _fileSystem[p .. "/"] == "folder" then return true end
+        end
+        for k, _ in pairs(_fileSystem) do
+            if k:sub(1, #p + 1) == p .. "/" then return true end
+        end
+        return false
+    end
+    env.listfiles = function(path)
+        local p = _resolvePath(path)
+        if not p then return {} end
+        local result = {}
+        local prefix = p .. "/"
+        for k, _ in pairs(_fileSystem) do
+            if k:sub(1, #prefix) == prefix and k ~= prefix then
+                local rest = k:sub(#prefix + 1)
+                if not rest:find("/") then
+                    table.insert(result, k)
+                end
+            end
+        end
+        return result
+    end
+    env.loadfile = function(path)
+        local p = _resolvePath(path)
+        if p and _fileSystem[p] then
+            local fn, err = loadstring(_fileSystem[p])
+            return fn
+        end
+        return nil
+    end
+    env.gethiddenproperty = function(obj, prop)
+        if not isProxy(obj) then return nil, false end
+        local mt = getmetatable(obj)
+        local cls = mt._className or ""
+        local memberInfo = resolveApiMember(cls, prop)
+        if memberInfo then
+            local val = mt._storedValues[prop]
+            if val ~= nil then return val, true end
+            return nil, true
+        end
+        return nil, false
+    end
+    env.sethiddenproperty = function(obj, prop, val)
+        if not isProxy(obj) then return false end
+        local mt = getmetatable(obj)
+        mt._storedValues[prop] = val
+        mt._setKeys[prop] = true
+        return true
+    end
+    env.getscriptable = function(obj, prop)
+        if not isProxy(obj) then return false end
+        local cls = getmetatable(obj)._className or ""
+        local memberInfo = resolveApiMember(cls, prop)
+        if memberInfo and not memberInfo.tags.NotScriptable then return true end
+        return false
+    end
+    env.setscriptable = function(obj, prop, flag)
+        return false
+    end
+    env.getconnections = function(signal)
+        local result = {}
+        if isProxy(signal) then
+            local mt = getmetatable(signal)
+            if mt and mt._signalForProperty then
+                local key = proxyName(mt._signalForProperty.proxy) .. "." .. mt._signalForProperty.propName
+                for _, cb in ipairs(propertyChangeCallbacks[key] or {}) do
+                    table.insert(result, {
+                        Enabled = true,
+                        ForeignState = false,
+                        LuaConnection = true,
+                        Function = cb,
+                        Thread = nil,
+                        Fire = function() cb() end,
+                        Defer = function() end,
+                        Disconnect = function() end,
+                        Disable = function() end,
+                        Enable = function() end,
+                    })
+                end
+            end
+            if mt and mt._signalForEvent then
+                for _, conn in ipairs(eventConnections) do
+                    if conn.proxy == mt._signalForEvent.proxy and conn.eventName == mt._signalForEvent.eventName then
+                        table.insert(result, {
+                            Enabled = true,
+                            ForeignState = false,
+                            LuaConnection = true,
+                            Function = conn.callback,
+                            Thread = nil,
+                            Fire = function() conn.callback() end,
+                            Defer = function() end,
+                            Disconnect = function() end,
+                            Disable = function() end,
+                            Enable = function() end,
+                        })
+                    end
+                end
+            end
+        end
+        return result
+    end
     env.getsenv = function() return env end
     env.setthreadidentity = function(id) if id < 0 then error("invalid identity", 2) end end
     env.getthreadidentity = function() return 7 end
@@ -5532,7 +6732,18 @@ local function createEnv()
     env.setidentity = function(id) if id < 0 then error("invalid identity", 2) end end
     env.fireclickdetector = function() end
     env.fireproximityprompt = function() end
-    env.hookmetamethod = function() return function() end end
+    env.hookmetamethod = function(obj, metamethodName, newFunc)
+        if obj == nil then error("invalid argument #1 to 'hookmetamethod'", 2) end
+        if type(metamethodName) ~= "string" then error("invalid argument #2 to 'hookmetamethod'", 2) end
+        if type(newFunc) ~= "function" then error("invalid argument #3 to 'hookmetamethod'", 2) end
+        local mt = getmetatable(obj)
+        if not mt then
+            error("invalid argument #1 to 'hookmetamethod' (value has no metatable)", 2)
+        end
+        local original = mt[metamethodName]
+        mt[metamethodName] = newFunc
+        return original
+    end
     env.isrbxactive = function() return true end
     env.lz4compress = function(s) return s end
     env.lz4decompress = function(s) return s end
@@ -5543,24 +6754,35 @@ local function createEnv()
         if type(t) ~= "table" then return end
         if flag == false or flag == nil then
             readonlyTables[t] = nil
+            frozenTables[t] = nil
+            local m = getmetatable(t)
+            if m and m._isReadonlyGuard then
+                local snapshot = m.__index
+                if type(snapshot) == "table" then
+                    for k, v in pairs(snapshot) do rawset(t, k, v) end
+                end
+                setmetatable(t, nil)
+            end
         else
             readonlyTables[t] = true
-            local snapshot = {}
-            for k, v in pairs(t) do snapshot[k] = v end
-            for k in pairs(t) do rawset(t, k, nil) end
-            local guardMt = {
-                __index = snapshot,
-                __newindex = function(tt, k, v)
-                    error("attempt to modify a readonly table", 2)
-                end,
-                _isReadonlyGuard = true,
-                _isReadonlyLocked = true,
-            }
-            realSetmetatable(t, guardMt)
         end
     end
-    env.getrenderproperty = function() return nil end
-    env.setrenderproperty = function() end
+    env.getrenderproperty = function(obj, prop)
+        if not obj or type(obj) ~= "table" then return nil end
+        local m = getmetatable(obj)
+        if m and m._storedValues then
+            return m._storedValues[prop]
+        end
+        return nil
+    end
+    env.setrenderproperty = function(obj, prop, val)
+        if not obj or type(obj) ~= "table" then return end
+        local m = getmetatable(obj)
+        if m and m._storedValues then
+            m._storedValues[prop] = val
+            m._setKeys[prop] = true
+        end
+    end
     env.cleardrawcache = function() end
     env.toast = function() end
     env.messagebox = function() return 1 end
@@ -5579,6 +6801,81 @@ local function createEnv()
     end
     env.getgc = function() return {} end
     env.gcinfo = function() return math.floor(_realCollectgarbage("count")) end
+    env.printidentity = function() print("Current identity is 7") end
+    env.cache = {
+        invalidate = function() end,
+        iscached = function() return true end,
+        replace = function() end,
+    }
+    knownCFunctions[env.cache.invalidate] = true
+    knownCFunctions[env.cache.iscached] = true
+    knownCFunctions[env.cache.replace] = true
+    env.isscriptable = function(obj, prop)
+        if not isProxy(obj) then return false end
+        local cls = getmetatable(obj)._className or ""
+        local memberInfo = resolveApiMember(cls, tostring(prop))
+        if memberInfo and not memberInfo.tags.NotScriptable then
+            return true
+        end
+        return false
+    end
+    knownCFunctions[env.isscriptable] = true
+    env.WebSocket = {
+        connect = function(url)
+            local ws = makeProxy("WebSocket")
+            local wmt = getmetatable(ws)
+            wmt._className = "WebSocket"
+            wmt._storedValues["ClassName"] = "WebSocket"
+            wmt._setKeys["ClassName"] = true
+            wmt._storedValues["Send"] = function() end
+            wmt._setKeys["Send"] = true
+            wmt._storedValues["Close"] = function() end
+            wmt._setKeys["Close"] = true
+            wmt._storedValues["OnMessage"] = {}
+            wmt._setKeys["OnMessage"] = true
+            wmt._storedValues["OnClose"] = {}
+            wmt._setKeys["OnClose"] = true
+            return ws
+        end,
+    }
+    knownCFunctions[env.WebSocket.connect] = true
+    env.queue_on_teleport = function() end
+    env.queueonteleport = env.queue_on_teleport
+    knownCFunctions[env.queue_on_teleport] = true
+    knownCFunctions[env.queueonteleport] = true
+    env.setrbxclipboard = function() end
+    knownCFunctions[env.setrbxclipboard] = true
+    env.rconsoleclear = function() end
+    env.rconsolecreate = function() end
+    env.rconsoledestroy = function() end
+    env.rconsoleinput = function() return "" end
+    env.rconsoleprint = function() end
+    env.rconsolesettitle = function() end
+    env.rconsolename = env.rconsolesettitle
+    env.consoleclear = env.rconsoleclear
+    env.consolecreate = env.rconsolecreate
+    env.consoledestroy = env.rconsoledestroy
+    env.consoleinput = env.rconsoleinput
+    env.consoleprint = env.rconsoleprint
+    env.consolesettitle = env.rconsolesettitle
+    env.mouse1click = function() end
+    env.mouse1press = function() end
+    env.mouse1release = function() end
+    env.mouse2click = function() end
+    env.mouse2press = function() end
+    env.mouse2release = function() end
+    env.mousemoveabs = function() end
+    env.mousemoverel = function() end
+    env.mousescroll = function() end
+    env.isrenderobj = function(obj)
+        if not obj or type(obj) ~= "table" then return false end
+        local m = getmetatable(obj)
+        if m and m._className == "Drawing" then return true end
+        return false
+    end
+    knownCFunctions[env.isrenderobj] = true
+    env.getcallingscript = function() return nil end
+    knownCFunctions[env.getcallingscript] = true
     env.collectgarbage = function(opt, ...)
         if opt == "count" then
             return _realCollectgarbage("count")
@@ -5624,6 +6921,7 @@ local function createEnv()
         package = true,
         loadfile = true,
         io = true,
+        os = true,
     }
     setmetatable(env, {
         __index = function(t, k)
@@ -5678,17 +6976,140 @@ local function createEnv()
             rawset(t, k, v)
         end,
     })
-    env.Drawing = setmetatable({}, { __index = function(_, k) return makeProxy("Drawing." .. tostring(k)) end })
-    env.crypt = setmetatable({}, { __index = function(_, k) return function() return makeProxy("crypt." .. tostring(k)) end end })
-    env.base64 = { encode = function(s) return s or "" end, decode = function(s) return s or "" end }
+    env.Drawing = setmetatable({
+        new = function(type_name)
+            local v = genVar("drawing")
+            emit(string.format('local %s = Drawing.new("%s")', v, tostring(type_name)))
+            local proxy = makeProxy(v)
+            local mt = getmetatable(proxy)
+            mt._className = "Drawing"
+            mt._storedValues["ClassName"] = "Drawing"
+            mt._setKeys["ClassName"] = true
+            mt._storedValues["Visible"] = false
+            mt._setKeys["Visible"] = true
+            return proxy
+        end,
+        Fonts = {
+            UI = 0, System = 1, Plex = 2, Monospace = 3,
+        },
+        Destroy = function() end,
+    }, {
+        __index = function(_, k)
+            if k == "Fonts" then return env.Drawing.Fonts end
+            return makeProxy("Drawing." .. tostring(k))
+        end,
+    })
+    local B64_CHARS = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/"
+    local function b64encode(data)
+        data = tostring(data or "")
+        local result = {}
+        local i = 1
+        while i <= #data do
+            local a, b, c = string.byte(data, i, i+2)
+            local idx1 = math.floor(a / 4) + 1
+            table.insert(result, string.sub(B64_CHARS, idx1, idx1))
+            if b then
+                local idx2 = (a % 4) * 16 + math.floor(b / 16) + 1
+                table.insert(result, string.sub(B64_CHARS, idx2, idx2))
+                if c then
+                    local idx3 = (b % 16) * 4 + math.floor(c / 64) + 1
+                    local idx4 = (c % 64) + 1
+                    table.insert(result, string.sub(B64_CHARS, idx3, idx3))
+                    table.insert(result, string.sub(B64_CHARS, idx4, idx4))
+                else
+                    local idx3 = (b % 16) * 4 + 1
+                    table.insert(result, string.sub(B64_CHARS, idx3, idx3))
+                    table.insert(result, "=")
+                end
+            else
+                local idx2 = (a % 4) * 16 + 1
+                table.insert(result, string.sub(B64_CHARS, idx2, idx2))
+                table.insert(result, "==")
+            end
+            i = i + 3
+        end
+        return table.concat(result)
+    end
+    local B64_DECODE = {}
+    for i = 1, #B64_CHARS do
+        B64_DECODE[string.byte(B64_CHARS, i)] = i - 1
+    end
+    local function b64decode(data)
+        data = tostring(data or ""):gsub("[^%w%+%/%=]", "")
+        data = data:gsub("=+$", "")
+        local result = {}
+        local i = 1
+        while i <= #data do
+            local a = B64_DECODE[string.byte(data, i)] or 0
+            local b = B64_DECODE[string.byte(data, i+1)] or 0
+            local c = B64_DECODE[string.byte(data, i+2)]
+            local d = B64_DECODE[string.byte(data, i+3)]
+            local byte1 = a * 4 + math.floor(b / 16)
+            table.insert(result, string.char(byte1))
+            if c then
+                local byte2 = (b % 16) * 16 + math.floor(c / 4)
+                table.insert(result, string.char(byte2))
+                if d then
+                    local byte3 = (c % 4) * 64 + d
+                    table.insert(result, string.char(byte3))
+                end
+            end
+            i = i + 4
+        end
+        return table.concat(result)
+    end
+    env.crypt = setmetatable({
+        base64encode = b64encode,
+        base64decode = b64decode,
+        encrypt = function(data, key, iv, mode)
+            local result = {}
+            for i = 1, #data do
+                local keyByte = string.byte(key, (i-1) % #key + 1)
+                table.insert(result, string.char(bit32.bxor(string.byte(data, i), keyByte)))
+            end
+            return table.concat(result), iv or "0000000000000000"
+        end,
+        decrypt = function(data, key, iv, mode)
+            local result = {}
+            for i = 1, #data do
+                local keyByte = string.byte(key, (i-1) % #key + 1)
+                table.insert(result, string.char(bit32.bxor(string.byte(data, i), keyByte)))
+            end
+            return table.concat(result)
+        end,
+        generatebytes = function(size)
+            size = tonumber(size) or 16
+            local bytes = {}
+            for i = 1, size do
+                table.insert(bytes, string.char(math.random(0, 255)))
+            end
+            return b64encode(table.concat(bytes))
+        end,
+        generatekey = function()
+            local bytes = {}
+            for i = 1, 32 do
+                table.insert(bytes, string.char(math.random(0, 255)))
+            end
+            return b64encode(table.concat(bytes))
+        end,
+        hash = function(data, algorithm)
+            local ok, result = pcall(serde.hash, algorithm or "sha256", data)
+            if ok and type(result) == "string" then return result end
+            return b64encode(tostring(data))
+        end,
+    }, { __index = function(_, k) return function() return "" end end })
+    env.base64 = { encode = b64encode, decode = b64decode }
     env.syn = setmetatable({
-        request = function() return { StatusCode = 200, Body = "", Success = true } end,
+        request = function(opts)
+            return env.http_request(opts)
+        end,
         queue = function() return {} end,
         crypt = env.crypt,
         base64 = env.base64,
         aux = setmetatable({}, { __index = function(_, k) return function() return nil end end }),
     }, { __index = function(_, k) return function() return nil end end })
     env.getregistry = function() return {} end
+    env.getreg = function() return {} end
     env.getidentity = function() return 7 end
     env.getthread = function() return coroutine.running() end
     env.getstack = function() return {} end
@@ -5696,7 +7117,21 @@ local function createEnv()
     env.isourclosure = function() return true end
     env.isexecutorclosure = function() return true end
     env.isfunction = function(f) return type(f) == "function" end
-    env.Path2DControlPoint = makeProxy("Path2DControlPoint")
+    env.Path2DControlPoint = setmetatable({
+        new = function(position, leaveTangent, rightTangent)
+            local v = genVar("p2dcp")
+            local posSer = serialize(position)
+            emit(string.format('local %s = Path2DControlPoint.new(%s)', v, posSer))
+            local proxy = makeProxy(v)
+            local mt = getmetatable(proxy)
+            mt._className = "Path2DControlPoint"
+            mt._storedValues["ClassName"] = "Path2DControlPoint"
+            mt._setKeys["ClassName"] = true
+            mt._storedValues["Position"] = position
+            mt._setKeys["Position"] = true
+            return proxy
+        end,
+    }, { __index = function(_, k) return makeProxy("Path2DControlPoint." .. tostring(k)) end })
     env.CrosshairImage = makeProxy("CrosshairImage")
     env.IB_CRASH = false
     env.DControlPoint = makeProxy("DControlPoint")
@@ -5722,8 +7157,27 @@ local function createEnv()
             end
             return nil
         end,
+        __newindex = function(t, k, v)
+            rawset(t, k, v)
+        end,
     })
 
+    for k, v in pairs(env) do
+        if type(v) == "function" then
+            knownCFunctions[v] = true
+        end
+    end
+    for k, v in pairs(env) do
+        if type(v) == "table" then
+            for k2, v2 in pairs(v) do
+                if type(v2) == "function" then
+                    knownCFunctions[v2] = true
+                end
+            end
+        end
+    end
+
+    _G._envRef = env
     return env
 end
 
