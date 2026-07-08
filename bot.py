@@ -15,7 +15,11 @@ load_dotenv()
 TOKEN = os.getenv("DISCORD_TOKEN")
 LUNE_SCRIPT = os.path.join(os.path.dirname(os.path.abspath(__file__)), "catlog.luau")
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
-API_DUMP = os.path.join(SCRIPT_DIR, "stuff", "API-Dump.json")
+STUFF_DIR = os.path.join(SCRIPT_DIR, "stuff")
+API_DUMP = os.path.join(STUFF_DIR, "API-Dump.json")
+CLASSES_JSON = os.path.join(STUFF_DIR, "classes.json")
+ENUMS_JSON = os.path.join(STUFF_DIR, "enums.json")
+ASSETIDS_JSON = os.path.join(STUFF_DIR, "assetids.json")
 LUNE_BIN = os.getenv("LUNE_BIN", "lune")
 TIMEOUT_SECONDS = 30
 
@@ -107,6 +111,17 @@ def run_lune(code: str) -> tuple[bool, str]:
             f"out={output_path}",
             f"api_dump={API_DUMP}",
         ]
+
+        # Pass the optional stuff/ files if they exist on disk. catlog.luau
+        # falls back to its built-in lookup if these are omitted, but passing
+        # them explicitly mirrors how api_dump is handled and lets the user
+        # override them by editing the paths below.
+        if os.path.isfile(CLASSES_JSON):
+            cmd.append(f"classes={CLASSES_JSON}")
+        if os.path.isfile(ENUMS_JSON):
+            cmd.append(f"enums={ENUMS_JSON}")
+        if os.path.isfile(ASSETIDS_JSON):
+            cmd.append(f"assetids={ASSETIDS_JSON}")
 
         try:
             proc = subprocess.run(
