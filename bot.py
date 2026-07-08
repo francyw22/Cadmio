@@ -22,11 +22,12 @@ TIMEOUT_SECONDS = 30
 NO_MENTIONS = discord.AllowedMentions.none()
 
 def sanitize_output(text: str) -> str:
-    text = text.replace("@everyone", "@\u200beveryone")
-    text = text.replace("@here", "@\u200bhere")
-    text = re.sub(r'<@&(\d+)>', r'<@&\u200b\1>', text)
-    text = re.sub(r'<@!?(\d+)>', r'<@\u200b\1>', text)
-    text = re.sub(r'<#(\d+)>', r'<#\u200b\1>', text)
+    ZWSP = '\u200b'
+    text = text.replace("@everyone", "@" + ZWSP + "everyone")
+    text = text.replace("@here", "@" + ZWSP + "here")
+    text = re.sub(r'<@&(\d+)>', lambda m: '<@&' + ZWSP + m.group(1) + '>', text)
+    text = re.sub(r'<@!?(\d+)>', lambda m: '<@' + ZWSP + m.group(1) + '>', text)
+    text = re.sub(r'<#(\d+)>', lambda m: '<#' + ZWSP + m.group(1) + '>', text)
     return text
 
 intents = discord.Intents.default()
