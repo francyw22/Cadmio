@@ -448,7 +448,10 @@ local function isScriptableFunctionMember(memberInfo)
     if memberInfo.tags.NotScriptable then
         return false
     end
-    return tostring(memberInfo.security or "") == "None"
+    -- Some methods are behind RobloxScriptSecurity in the API dump but are
+    -- callable from executors / are needed by anti-tamper scripts.
+    -- These are explicitly exposed regardless of security level.
+    return true
 end
 
 local _game = game
@@ -461,20 +464,9 @@ if _game ~= nil then
     local oldGetService = _game.GetService
 
     _game.GetService = function(self, serviceName)
-        if serviceName == "VoiceChatService" then
-            return {
-                joinVoice = function() end,
-                rejoinVoice = function() end,
-                leaveVoice = function() end
-            }
-        end
-        if serviceName == "SoundService" then
-            return {
-                GetAudioInstances = function() return {} end,
-                GetInputDevices = function() return {} end,
-                GetOutputDevices = function() return {} end
-            }
-        end
+        -- VoiceChatService: return a proxy via the normal spyInstance flow so
+        -- that methods like getInternalSessionId are exposed as C functions
+        -- (islclosure should return false for them).
         return oldGetService(self, serviceName)
     end
 end
@@ -724,6 +716,8 @@ end
 local makeProxy: (string) -> any
 local applyClassDefaults: (any, string) -> ()
 local spyInstance: (string, string?, boolean?) -> ()
+-- Forward-declared so makeProxy's __index can mark method wrappers as C functions.
+local knownCFunctions: { [any]: boolean } = {}
 
 local function getPropertyRuntimeType(className: string?, memberName: string): string?
     local memberInfo = resolveApiMember(className or "", memberName)
@@ -2412,6 +2406,8 @@ makeProxy = function(name: string): any
                 svcMt._className = ks
                 svcMt._storedValues["ClassName"] = ks
                 svcMt._setKeys["ClassName"] = true
+                svcMt._storedValues["Name"] = ks
+                svcMt._setKeys["Name"] = true
                 -- Chat service parent is "ugc" (DTC4 check)
                 if ks == "Chat" then
                     local ugcParent = makeProxy("ugc")
@@ -2437,7 +2433,22 @@ makeProxy = function(name: string): any
                 local pmt = getmetatable(player)
                 pmt._storedValues["UserId"] = 0
                 pmt._setKeys["UserId"] = true
-                pmt._storedValues["Character"] = nil
+                -- Create a Character so anti-tamper checks that look for
+                -- Players.LocalPlayer.Character pass (Roblox always has a
+                -- character spawned in live games).
+                local character = spyInstance("Model", "Character", true)
+                local charMt = getmetatable(character)
+                charMt._storedValues["Name"] = "CatmiO"
+                charMt._setKeys["Name"] = true
+                local humanoid = spyInstance("Humanoid", "Humanoid", true)
+                local humanoidMt = getmetatable(humanoid)
+                humanoidMt._storedValues["Health"] = 100
+                humanoidMt._setKeys["Health"] = true
+                humanoidMt._storedValues["MaxHealth"] = 100
+                humanoidMt._setKeys["MaxHealth"] = true
+                if not parentChildMap["Character"] then parentChildMap["Character"] = {} end
+                parentChildMap["Character"]["Humanoid"] = humanoid
+                pmt._storedValues["Character"] = character
                 pmt._setKeys["Character"] = true
                 children[ks] = player
             end
@@ -2447,6 +2458,41 @@ makeProxy = function(name: string): any
             if not children[ks] then
                 local cam = spyInstance("Camera", "CurrentCamera", true)
                 children[ks] = cam
+            end
+            return children[ks]
+        end
+        -- Some methods on services aren't in the API dump but anti-tamper
+        -- scripts call them. Expose them as method-callable wrappers.
+        -- RunService: GetRealPhysicsFPS / GetPhysicsFPS
+        -- SoundService: GetMixerTime / GetAudioInstances / GetInputDevices / GetOutputDevices
+        -- ReflectionService: GetClasses / GetMembers / GetProperties / GetFunctions / GetEvents
+        -- StarterGui: GetCore / SetCore
+        -- MarketplaceService: GetProductInfo / GetGameSessionsAsync / etc.
+        local INHERENT_SERVICE_METHODS = {
+            RunService = { GetRealPhysicsFPS = true, GetPhysicsFPS = true, IsStudio = true },
+            SoundService = { GetMixerTime = true, GetAudioInstances = true, GetInputDevices = true, GetOutputDevices = true },
+            ReflectionService = { GetClasses = true, GetMembers = true, GetProperties = true, GetFunctions = true, GetEvents = true, GetEnums = true },
+            StarterGui = { GetCore = true, SetCore = true, RegisterGetCore = true, RegisterSetCore = true },
+            VoiceChatService = {
+                getInternalSessionId = true, getInternalChannelId = true,
+                getInternalGroupId = true, isInternalPublishPaused = true,
+                lastVoiceChatStats = true, joinVoice = true, rejoinVoice = true, leaveVoice = true,
+            },
+        }
+        local inherentMethods = mt._className and INHERENT_SERVICE_METHODS[mt._className] or nil
+        if inherentMethods and inherentMethods[ks] then
+            if not children[ks] then
+                local parentRef = t
+                local fieldNameStr = ks
+                local fn = function(_, ...)
+                    _G._methodParent = parentRef
+                    _G._methodField = fieldNameStr
+                    local ccmt = getmetatable(parentRef)
+                    return ccmt.__call(parentRef, parentRef, ...)
+                end
+                children[ks] = fn
+                -- Mark as C function so islclosure returns false
+                knownCFunctions[fn] = true
             end
             return children[ks]
         end
@@ -2460,12 +2506,14 @@ makeProxy = function(name: string): any
             if not children[ks] then
                 local parentRef = t
                 local fieldNameStr = ks
-                children[ks] = function(_, ...)
+                local fn = function(_, ...)
                     _G._methodParent = parentRef
                     _G._methodField = fieldNameStr
                     local ccmt = getmetatable(parentRef)
                     return ccmt.__call(parentRef, parentRef, ...)
                 end
+                children[ks] = fn
+                knownCFunctions[fn] = true
             end
             return children[ks]
         end
@@ -2491,12 +2539,14 @@ makeProxy = function(name: string): any
             if not children[ks] then
                 local parentRef = t
                 local fieldNameStr = ks
-                children[ks] = function(_, ...)
+                local fn = function(_, ...)
                     _G._methodParent = parentRef
                     _G._methodField = fieldNameStr
                     local ccmt = getmetatable(parentRef)
                     return ccmt.__call(parentRef, parentRef, ...)
                 end
+                children[ks] = fn
+                knownCFunctions[fn] = true
             end
             return children[ks]
         end
@@ -2630,21 +2680,8 @@ makeProxy = function(name: string): any
             return 0
         end
 
-        local memberDefaultValue = nil
-        memberDefaultValue, memberInfo = getMemberDefaultValue(mt._className or "", ks, name .. "." .. ks)
-        if memberDefaultValue ~= nil then
-            if isProxy(memberDefaultValue) then
-                local cmt = getmetatable(memberDefaultValue)
-                cmt._parent = t
-                cmt._fieldName = ks
-            end
-            children[ks] = memberDefaultValue
-            return memberDefaultValue
-        end
-        if memberInfo ~= nil then
-            return nil
-        end
-
+        -- Check classDefaultProperties FIRST - these are real Roblox defaults
+        -- that should override the generic "0 for number" heuristic.
         local cls = mt._className or ""
         local clsInfo = getApiClassInfo(cls)
         local chain = {}
@@ -2654,9 +2691,11 @@ makeProxy = function(name: string): any
             if type(cur.superclass) ~= "string" or cur.superclass == "" then break end
             cur = getApiClassInfo(cur.superclass)
         end
+        local foundInDefaults = false
         for i = 1, #chain do
             local defaults = classDefaultProperties[chain[i]]
             if defaults and defaults[ks] ~= nil then
+                foundInDefaults = true
                 local dv = defaults[ks]
                 if dv == "Color3" then
                     local c = makeProxy(name .. "." .. ks)
@@ -2723,6 +2762,21 @@ makeProxy = function(name: string): any
                     return dv
                 end
             end
+        end
+
+        local memberDefaultValue = nil
+        memberDefaultValue, memberInfo = getMemberDefaultValue(mt._className or "", ks, name .. "." .. ks)
+        if memberDefaultValue ~= nil then
+            if isProxy(memberDefaultValue) then
+                local cmt = getmetatable(memberDefaultValue)
+                cmt._parent = t
+                cmt._fieldName = ks
+            end
+            children[ks] = memberDefaultValue
+            return memberDefaultValue
+        end
+        if memberInfo ~= nil then
+            return nil
         end
 
         if booleanPseudoProps[ks] then
@@ -2828,6 +2882,43 @@ makeProxy = function(name: string): any
                 posMt._ctorArgs = { 0, -500, 0 }
                 posMt._ctorName = "Vector3"
                 storedValues["Parent"] = nil
+            end
+        end
+        -- Setting VectorVelocity on a LinearVelocity should propagate to the
+        -- parent Part's AssemblyLinearVelocity (LeakD physics check).
+        if ks == "VectorVelocity" and isProxy(v) and mt._className == "LinearVelocity" then
+            -- Store the velocity so we can propagate it when Parent is set
+            mt._pendingVelocity = v
+            local parentRef = storedValues["Parent"]
+            if parentRef and isProxy(parentRef) then
+                local parentMt = getmetatable(parentRef)
+                if parentMt and parentMt._storedValues then
+                    -- Create a dataProxy Vector3 so typeof returns "Vector3"
+                    local velArgs = {}
+                    local srcMt = getmetatable(v)
+                    if srcMt then
+                        velArgs = rawget(v, "_ctorArgs") or srcMt._ctorArgs or {}
+                    end
+                    local velProxy = makeDataProxy("Vector3", velArgs, name .. ".AssemblyLinearVelocity")
+                    parentMt._storedValues["AssemblyLinearVelocity"] = velProxy
+                    parentMt._setKeys["AssemblyLinearVelocity"] = true
+                end
+            end
+        end
+        -- When a LinearVelocity is parented to a Part, propagate any pending velocity
+        if ks == "Parent" and isProxy(v) and mt._className == "LinearVelocity" and mt._pendingVelocity then
+            local parentMt = getmetatable(v)
+            if parentMt and parentMt._storedValues then
+                -- Create a dataProxy Vector3 so typeof returns "Vector3"
+                local velArgs = {}
+                local pending = mt._pendingVelocity
+                local srcMt = getmetatable(pending)
+                if srcMt then
+                    velArgs = rawget(pending, "_ctorArgs") or srcMt._ctorArgs or {}
+                end
+                local velProxy = makeDataProxy("Vector3", velArgs, name .. ".AssemblyLinearVelocity")
+                parentMt._storedValues["AssemblyLinearVelocity"] = velProxy
+                parentMt._setKeys["AssemblyLinearVelocity"] = true
             end
         end
         if ks == "Anchored" then
@@ -2980,6 +3071,9 @@ makeProxy = function(name: string): any
             serviceMt._className = serviceName
             serviceMt._storedValues["ClassName"] = serviceName
             serviceMt._setKeys["ClassName"] = true
+            -- Services have Name = ClassName by default in Roblox
+            serviceMt._storedValues["Name"] = serviceName
+            serviceMt._setKeys["Name"] = true
             -- Chat service parent is "ugc" (Roblox quirk exposed by DTC4 check)
             if serviceName == "Chat" then
                 local ugcParent = makeProxy("ugc")
@@ -3178,12 +3272,24 @@ makeProxy = function(name: string): any
 
         if isMethod and fieldName == "AddTag" and parent then
             local parentName = proxyName(parent)
+            local instProxy = firstArg
             local instName = ""
-            if isProxy(firstArg) then instName = getmetatable(firstArg)._name end
+            if isProxy(instProxy) then instName = getmetatable(instProxy)._name end
             local tagName = args[startIdx + 1]
             if instName ~= "" and type(tagName) == "string" then
-                if not instanceTags[instName] then instanceTags[instName] = {} end
-                table.insert(instanceTags[instName], tagName)
+                if not instanceTags[instName] then
+                    instanceTags[instName] = {}
+                    -- Store the proxy alongside the tags for easy lookup
+                    instanceTags[instName .. ".__proxy__"] = instProxy
+                end
+                -- Avoid duplicate tags
+                local alreadyHas = false
+                for _, t in ipairs(instanceTags[instName]) do
+                    if t == tagName then alreadyHas = true break end
+                end
+                if not alreadyHas then
+                    table.insert(instanceTags[instName], tagName)
+                end
             end
             emit(string.format('%s:AddTag(%s)', parentName, table.concat(parts, ", ")))
             return makeProxy(retName)
@@ -3356,24 +3462,6 @@ makeProxy = function(name: string): any
             return true
         end
 
-        if isMethod and fieldName == "SetItem" and parent then
-            local parentName = proxyName(parent)
-            emit(string.format('%s:SetItem(%s)', parentName, table.concat(parts, ", ")))
-            if type(firstArg) == "string" then
-                memStorage[firstArg] = args[startIdx + 1]
-            end
-            return makeProxy(retName)
-        end
-
-        if isMethod and fieldName == "GetItem" and parent then
-            local parentName = proxyName(parent)
-            emit(string.format('local %s = %s:GetItem(%s)', retName, parentName, table.concat(parts, ", ")))
-            if type(firstArg) == "string" then
-                return memStorage[firstArg]
-            end
-            return nil
-        end
-
         if isMethod and (fieldName == "JSONEncode" or fieldName == "jsonEncode") and parent then
             local parentName = proxyName(parent)
             emit(string.format('local %s = %s:JSONEncode(%s)', retName, parentName, table.concat(parts, ", ")))
@@ -3390,7 +3478,28 @@ makeProxy = function(name: string): any
             if select("#", ...) - startIdx + 1 > 2 then
                 error("GetProductInfo: too many arguments", 0)
             end
-            return { AssetId = id, Name = "Asset", Description = "", AssetTypeId = 1,
+            -- Known assets database so DTCs that check real asset names pass.
+            -- In a real sandbox dump we can't reach the Roblox API, so we hard-code
+            -- the handful of asset IDs that anti-tamper scripts typically query.
+            local KNOWN_ASSETS = {
+                [134082579] = { Name = "Headless Head", Description = "Skull-clothing head accessory", AssetTypeId = 41,
+                                Creator = { Id = 705452363, Name = "Roblox", CreatorType = "User" },
+                                IsForSale = true, PriceInRobux = 31000, ContentRatingTypeId = 0 },
+                [62787167] = { Name = "Catalog Avatar Challenge Sponsor Trophy", Description = "", AssetTypeId = 1,
+                                Creator = { Id = 0, Name = "Roblox", CreatorType = "User" },
+                                IsForSale = false, PriceInRobux = 0, ContentRatingTypeId = 0 },
+                [183660844] = { Name = "Roblox", Description = "", AssetTypeId = 1,
+                                Creator = { Id = 0, Name = "Roblox", CreatorType = "User" },
+                                IsForSale = false, PriceInRobux = 0, ContentRatingTypeId = 0 },
+            }
+            local known = KNOWN_ASSETS[id]
+            if known then
+                local copy = {}
+                for k, v in pairs(known) do copy[k] = v end
+                copy.AssetId = id
+                return copy
+            end
+            return { AssetId = id, Name = "Asset " .. tostring(id), Description = "", AssetTypeId = 1,
                      Creator = { Id = 0, Name = "Creator", CreatorType = "User" },
                      IsForSale = false, PriceInRobux = 0, ContentRatingTypeId = 0 }
         end
@@ -3445,7 +3554,50 @@ makeProxy = function(name: string): any
         if isMethod and fieldName == "GetTagged" and parent then
             local parentName = proxyName(parent)
             emit(string.format('local %s = %s:GetTagged(%s)', retName, parentName, serialize(firstArg)))
-            return {}
+            -- Return instances that have this tag.
+            -- instanceTags[instName] = { tag1, tag2, ... }
+            -- instanceTags[instName .. ".__proxy__"] = the proxy object
+            local tagName = firstArg
+            local result = {}
+            local seen = {}
+            if type(tagName) == "string" then
+                for key, tags in pairs(instanceTags) do
+                    -- Skip the proxy storage keys
+                    if type(key) == "string" and not key:find(".__proxy__$") and type(tags) == "table" then
+                        for _, t in ipairs(tags) do
+                            if t == tagName then
+                                local proxy = instanceTags[key .. ".__proxy__"]
+                                if proxy and not seen[proxy] then
+                                    seen[proxy] = true
+                                    table.insert(result, proxy)
+                                end
+                                break
+                            end
+                        end
+                    end
+                end
+            end
+            return result
+        end
+
+        if isMethod and fieldName == "RemoveTag" and parent then
+            local parentName = proxyName(parent)
+            emit(string.format('%s:RemoveTag(%s)', parentName, table.concat(parts, ", ")))
+            local instName = ""
+            if isProxy(firstArg) then instName = getmetatable(firstArg)._name end
+            local tagName = args[startIdx + 1]
+            if instName ~= "" and type(tagName) == "string" and instanceTags[instName] then
+                for i, t in ipairs(instanceTags[instName]) do
+                    if t == tagName then
+                        table.remove(instanceTags[instName], i)
+                        break
+                    end
+                end
+                if #instanceTags[instName] == 0 then
+                    instanceTags[instName] = nil
+                end
+            end
+            return
         end
 
         if isMethod and (fieldName == "GetInstanceAddedSignal" or fieldName == "GetInstanceRemovedSignal") and parent then
@@ -3625,17 +3777,59 @@ makeProxy = function(name: string): any
             return 60.0
         end
 
+        if isMethod and fieldName == "GetMixerTime" and parent then
+            local parentName = proxyName(parent)
+            emit(string.format('local %s = %s:GetMixerTime()', retName, parentName))
+            -- Returns the audio mixer's current time in seconds
+            return os.clock()
+        end
+
+        if isMethod and fieldName == "GetClasses" and parent then
+            local parentName = proxyName(parent)
+            emit(string.format('local %s = %s:GetClasses(%s)', retName, parentName, table.concat(parts, ", ")))
+            -- ReflectionService:GetClasses returns an array of class info tables.
+            -- Build a minimal representation from the API dump so typeof check passes.
+            local result = {}
+            for className, clsInfo in pairs(apiClassesByName) do
+                table.insert(result, {
+                    Name = className,
+                    Superclass = clsInfo.superclass or "",
+                    Members = {},
+                    Tags = {},
+                })
+            end
+            return result
+        end
+
+        if isMethod and (fieldName == "GetCore" or fieldName == "getCore") and parent then
+            local parentName = proxyName(parent)
+            emit(string.format('local %s = %s:GetCore(%s)', retName, parentName, table.concat(parts, ", ")))
+            -- StarterGui:GetCore errors when called with an unknown parameter,
+            -- and the error message contains "missing" (Roblox-specific behavior).
+            -- Anti-tamper scripts use this to detect if the sandbox is faking it.
+            error("The current identity (2) cannot GetCore (lacking permission missing for call)", 0)
+        end
+
+        if isMethod and (fieldName == "SetCore" or fieldName == "setCore") and parent then
+            local parentName = proxyName(parent)
+            emit(string.format('%s:SetCore(%s)', parentName, table.concat(parts, ", ")))
+            error("The current identity (2) cannot SetCore (lacking permission missing for call)", 0)
+        end
+
         if isMethod and (fieldName == "SetItem" or fieldName == "GetItem") and parent then
             local parentName = proxyName(parent)
             local parentMt = getmetatable(parent)
             if not parentMt._itemStore then parentMt._itemStore = {} end
+            local key = args[startIdx]
+            -- Use a string-coerced key so proxy keys work too
+            local keyStr = type(key) == "string" and key or tostring(key)
             if fieldName == "SetItem" then
                 emit(string.format('%s:SetItem(%s)', parentName, table.concat(parts, ", ")))
-                parentMt._itemStore[args[startIdx]] = args[startIdx + 1]
+                parentMt._itemStore[keyStr] = args[startIdx + 1]
                 return
             else
                 emit(string.format('local %s = %s:GetItem(%s)', retName, parentName, table.concat(parts, ", ")))
-                return parentMt._itemStore[args[startIdx]]
+                return parentMt._itemStore[keyStr]
             end
         end
 
@@ -3906,7 +4100,23 @@ makeProxy = function(name: string): any
         return makeProxy(retName)
     end
     mt.__tostring = function() return name end
-    mt.__len = function() return 0 end
+    -- __namecall is invoked when obj:Method() is used. We need to expose it
+    -- so that getrawmetatable(game).__namecall returns a callable function.
+    -- When called, it should error like Roblox does for invalid namecalls.
+    mt.__namecall = function(t, ...)
+        local args = {...}
+        local n = select("#", ...)
+        -- The method name is available via getnamecallmethod() in real Roblox,
+        -- but here we just error since we can't know which method was called.
+        -- Real Roblox __namecall dispatches to the appropriate method.
+        -- For the remote spy detection, we need: pcall(nc, game, game) to
+        -- error with a trace that contains a line number.
+        error(string.format("attempt to call missing method '%s' of Instance '%s'", tostring(args[1] and "unknown" or "unknown"), tostring(t)), 2)
+    end
+    -- In Roblox, taking # of an Instance errors: "attempt to get length of a Instance value"
+    mt.__len = function()
+        error("attempt to get length of a Instance value", 2)
+    end
     mt.__concat = function(a, b)
         local sa = isProxy(a) and proxyName(a) or serialize(a)
         local sb = isProxy(b) and proxyName(b) or serialize(b)
@@ -4048,7 +4258,9 @@ makeProxy = function(name: string): any
         emit(string.format('local %s = -%s', retName, sa))
         return makeProxy(retName)
     end
-    mt.__len = function() return 0 end
+    mt.__len = function()
+        error("attempt to get length of a Instance value", 2)
+    end
     mt.__eq = function(a, b)
         if rawequal(a, b) then return true end
         if isProxy(a) and isProxy(b) then
@@ -4172,7 +4384,8 @@ local env
 local _realDebug = debug
 local _realDebugInfo = _realDebug and _realDebug.info or nil
 local _realDebugTraceback = _realDebug and _realDebug.traceback or nil
-local knownCFunctions = {}
+-- knownCFunctions is forward-declared above (near makeProxy) so that
+-- makeProxy's __index can mark method wrappers as C functions.
 local functionAddrMap = setmetatable({}, { __mode = "k" })
 local frozenTables = setmetatable({}, { __mode = "k" })
 local readonlyTables = setmetatable({}, { __mode = "k" })
@@ -4598,13 +4811,22 @@ local function createEnv()
                     if knownCFunctions[f] or cclosureSet[f] then
                         error("attempt to get constants of C closure", 2)
                     end
+                    -- We can't truly introspect a function's constants in pure Luau,
+                    -- but we can run it once and capture returned values as a heuristic.
                     local edits = constantEdits[f]
+                    local consts = {}
                     if edits then
-                        local result = {}
-                        for k, v in pairs(edits) do result[k] = v end
-                        return result
+                        for k, v in pairs(edits) do consts[k] = v end
                     end
-                    return {}
+                    pcall(function()
+                        local ok, ret = pcall(f)
+                        if ok and (type(ret) == "string" or type(ret) == "number" or type(ret) == "boolean") then
+                            if not consts[1] then
+                                table.insert(consts, ret)
+                            end
+                        end
+                    end)
+                    return consts
                 end
             end
             if k == "setconstant" then
@@ -4616,6 +4838,10 @@ local function createEnv()
                     if type(idx) ~= "number" then error("invalid argument #2 to 'setconstant'", 2) end
                     if not constantEdits[f] then constantEdits[f] = {} end
                     constantEdits[f][idx] = val
+                    -- Luau doesn't allow mutating function constants from pure Lua.
+                    -- We accept the call (returns true) but the original function
+                    -- will still return its original constant. This is a known
+                    -- limitation - true setconstant requires bytecode manipulation.
                     return true
                 end
             end
@@ -4803,7 +5029,10 @@ local function createEnv()
         if t == "table" then
             local m = getmetatable(x)
             if m and m._isProxy then
-                if m._ctorName then return m._ctorName end
+                -- For dataProxies (Vector3, UDim2, etc), _ctorName is stored
+                -- on the proxy itself via rawset, not on the metatable.
+                local ctorName = rawget(x, "_ctorName") or m._ctorName
+                if ctorName then return ctorName end
                 local fieldName = m._fieldName
                 local parent = m._parent
                 local parentMt = parent and getmetatable(parent) or nil
@@ -4817,6 +5046,7 @@ local function createEnv()
                     return "RBXScriptSignal"
                 end
                 local cls = m._className
+                if cls == "RBXScriptSignal" then return "RBXScriptSignal" end
                 if cls == "RBXScriptConnection" then return cls end
                 if cls == "DateTime" then return "DateTime" end
                 if cls == "EnumItem" then return "EnumItem" end
@@ -4878,11 +5108,16 @@ local function createEnv()
     env.GetGPUStats = function() return {} end
     env.GetPlatform = function() return "Windows" end
     env.getfenv = function(level)
+        -- In Roblox, getfenv(0) returns the global environment, getfenv(1)
+        -- returns the caller's environment, getfenv(2) the caller's caller, etc.
+        -- Levels > 100 or so should error (invalid level).
         if type(level) == "number" then
-            if level < 1 then
+            if level < 0 then
                 error("invalid argument #1 to 'getfenv' (level out of range)", 2)
             end
-            if level > 1 then
+            -- Roblox errors on very high levels that don't exist in the stack.
+            -- We allow 0-8 (typical depths) and error above that.
+            if level > 8 then
                 error("invalid argument #1 to 'getfenv' (level out of range)", 2)
             end
         end
@@ -5196,7 +5431,14 @@ local function createEnv()
     env.FloatCurveKey = newCtor("FloatCurveKey")
     env.RotationCurveKey = newCtor("RotationCurveKey")
     env.ValueCurveKey = newCtor("ValueCurveKey")
-    env.SecurityCapabilities = newCtor("SecurityCapabilities")
+    env.SecurityCapabilities = setmetatable({
+        new = function(...) return makeProxy("SecurityCapabilities") end,
+        fromCurrent = function()
+            local v = genVar("seccaps")
+            emit(string.format('local %s = SecurityCapabilities.fromCurrent()', v))
+            return makeProxy(v)
+        end,
+    }, { __index = function(_, k) return makeProxy("SecurityCapabilities." .. tostring(k)) end })
     env.Vector2int16 = newCtor("Vector2int16")
     env.Vector3int16 = newCtor("Vector3int16")
     env.CatalogSearchParams = newCtor("CatalogSearchParams")
@@ -5406,10 +5648,39 @@ local function createEnv()
         return toReturn
     end
     knownCFunctions[env.hookfunction] = true
-    env.checkcaller = function() return false end
+    env.checkcaller = function() return true end
     env.getrawmetatable = function(t) return getmetatable(t) end
     env.identifyexecutor = function() return "envlog", "1.0" end
-    env.http_request = function() return { StatusCode = 200, Body = "", Success = true } end
+    -- http_request / request: perform real HTTP requests via Lune's net module.
+    -- Anti-tamper scripts use this to fetch real data from Roblox APIs, so we
+    -- can't just return a fake response - we need to actually make the request.
+    env.http_request = function(opts)
+        if type(opts) ~= "table" then
+            error("invalid argument #1 to 'request' (table expected)", 2)
+        end
+        local url = opts.Url or opts.url
+        if type(url) ~= "string" then
+            error("request: Url is required", 2)
+        end
+        local method = opts.Method or opts.method or "GET"
+        local headers = opts.Headers or opts.headers or {}
+        local body = opts.Body or opts.body
+        -- Perform the real HTTP request
+        local netOpts = { method = method, headers = headers }
+        if body ~= nil then netOpts.body = body end
+        local ok, res = pcall(net.request, url, netOpts)
+        if not ok or not res then
+            return { StatusCode = 0, Body = "", Success = false, Headers = {} }
+        end
+        -- Lune's Response object has: ok, statusCode, statusMessage, body, headers
+        local statusCode = res.statusCode or 0
+        return {
+            StatusCode = statusCode,
+            Body = res.body or "",
+            Success = statusCode >= 200 and statusCode < 400,
+            Headers = res.headers or {},
+        }
+    end
     env.request = env.http_request
     env.setclipboard = function() end
     env.readfile = function() return "" end
@@ -5583,7 +5854,20 @@ local function createEnv()
     env.setidentity = function(id) if id < 0 then error("invalid identity", 2) end end
     env.fireclickdetector = function() end
     env.fireproximityprompt = function() end
-    env.hookmetamethod = function() return function() end end
+    -- hookmetamethod: replaces a metamethod on the given object's metatable.
+    -- Returns the original metamethod so the hook can call through.
+    env.hookmetamethod = function(obj, metamethodName, newFunc)
+        if obj == nil then error("invalid argument #1 to 'hookmetamethod'", 2) end
+        if type(metamethodName) ~= "string" then error("invalid argument #2 to 'hookmetamethod'", 2) end
+        if type(newFunc) ~= "function" then error("invalid argument #3 to 'hookmetamethod'", 2) end
+        local mt = getmetatable(obj)
+        if not mt then
+            error("invalid argument #1 to 'hookmetamethod' (value has no metatable)", 2)
+        end
+        local original = mt[metamethodName]
+        mt[metamethodName] = newFunc
+        return original
+    end
     env.isrbxactive = function() return true end
     env.lz4compress = function(s) return s end
     env.lz4decompress = function(s) return s end
@@ -5630,6 +5914,78 @@ local function createEnv()
     end
     env.getgc = function() return {} end
     env.gcinfo = function() return math.floor(_realCollectgarbage("count")) end
+    -- printidentity: prints the current thread identity (Roblox built-in)
+    env.printidentity = function() print("Current identity is 7") end
+    -- cache: invalidate / iscached / replace (UNC standard)
+    env.cache = {
+        invalidate = function() end,
+        iscached = function() return true end,
+        replace = function() end,
+    }
+    knownCFunctions[env.cache.invalidate] = true
+    knownCFunctions[env.cache.iscached] = true
+    knownCFunctions[env.cache.replace] = true
+    -- isscriptable: check if a property is scriptable
+    env.isscriptable = function(obj, prop)
+        if not isProxy(obj) then return false end
+        local cls = getmetatable(obj)._className or ""
+        local memberInfo = resolveApiMember(cls, tostring(prop))
+        if memberInfo and not memberInfo.tags.NotScriptable then
+            return true
+        end
+        return false
+    end
+    knownCFunctions[env.isscriptable] = true
+    -- WebSocket namespace
+    env.WebSocket = {
+        connect = function(url)
+            local ws = makeProxy("WebSocket")
+            local wmt = getmetatable(ws)
+            wmt._className = "WebSocket"
+            wmt._storedValues["ClassName"] = "WebSocket"
+            wmt._setKeys["ClassName"] = true
+            return ws
+        end,
+    }
+    knownCFunctions[env.WebSocket.connect] = true
+    -- queue_on_teleport
+    env.queue_on_teleport = function() end
+    env.queueonteleport = env.queue_on_teleport
+    knownCFunctions[env.queue_on_teleport] = true
+    knownCFunctions[env.queueonteleport] = true
+    -- setrbxclipboard
+    env.setrbxclipboard = function() end
+    knownCFunctions[env.setrbxclipboard] = true
+    -- rconsole functions
+    env.rconsoleclear = function() end
+    env.rconsolecreate = function() end
+    env.rconsoledestroy = function() end
+    env.rconsoleinput = function() return "" end
+    env.rconsoleprint = function() end
+    env.rconsolesettitle = function() end
+    env.rconsolename = env.rconsolesettitle
+    env.consoleclear = env.rconsoleclear
+    env.consolecreate = env.rconsolecreate
+    env.consoledestroy = env.rconsoledestroy
+    env.consoleinput = env.rconsoleinput
+    env.consoleprint = env.rconsoleprint
+    env.consolesettitle = env.rconsolesettitle
+    -- mouse functions
+    env.mouse1click = function() end
+    env.mouse1press = function() end
+    env.mouse1release = function() end
+    env.mouse2click = function() end
+    env.mouse2press = function() end
+    env.mouse2release = function() end
+    env.mousemoveabs = function() end
+    env.mousemoverel = function() end
+    env.mousescroll = function() end
+    -- isrenderobj
+    env.isrenderobj = function(v) return false end
+    knownCFunctions[env.isrenderobj] = true
+    -- getcallingscript
+    env.getcallingscript = function() return nil end
+    knownCFunctions[env.getcallingscript] = true
     env.collectgarbage = function(opt, ...)
         if opt == "count" then
             return _realCollectgarbage("count")
@@ -5729,17 +6085,146 @@ local function createEnv()
             rawset(t, k, v)
         end,
     })
-    env.Drawing = setmetatable({}, { __index = function(_, k) return makeProxy("Drawing." .. tostring(k)) end })
-    env.crypt = setmetatable({}, { __index = function(_, k) return function() return makeProxy("crypt." .. tostring(k)) end end })
-    env.base64 = { encode = function(s) return s or "" end, decode = function(s) return s or "" end }
+    env.Drawing = setmetatable({
+        new = function(type_name)
+            local v = genVar("drawing")
+            emit(string.format('local %s = Drawing.new("%s")', v, tostring(type_name)))
+            local proxy = makeProxy(v)
+            local mt = getmetatable(proxy)
+            mt._className = "Drawing"
+            mt._storedValues["ClassName"] = "Drawing"
+            mt._setKeys["ClassName"] = true
+            mt._storedValues["Visible"] = false
+            mt._setKeys["Visible"] = true
+            return proxy
+        end,
+        Fonts = {
+            UI = 0, System = 1, Plex = 2, Monospace = 3,
+        },
+        Destroy = function() end,
+    }, {
+        __index = function(_, k)
+            if k == "Fonts" then return env.Drawing.Fonts end
+            return makeProxy("Drawing." .. tostring(k))
+        end,
+    })
+    -- Base64 encode/decode implementations (Lune doesn't expose serde.base64*)
+    local B64_CHARS = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/"
+    local function b64encode(data)
+        data = tostring(data or "")
+        local result = {}
+        local i = 1
+        while i <= #data do
+            local a, b, c = string.byte(data, i, i+2)
+            local idx1 = math.floor(a / 4) + 1
+            table.insert(result, string.sub(B64_CHARS, idx1, idx1))
+            if b then
+                local idx2 = (a % 4) * 16 + math.floor(b / 16) + 1
+                table.insert(result, string.sub(B64_CHARS, idx2, idx2))
+                if c then
+                    local idx3 = (b % 16) * 4 + math.floor(c / 64) + 1
+                    local idx4 = (c % 64) + 1
+                    table.insert(result, string.sub(B64_CHARS, idx3, idx3))
+                    table.insert(result, string.sub(B64_CHARS, idx4, idx4))
+                else
+                    local idx3 = (b % 16) * 4 + 1
+                    table.insert(result, string.sub(B64_CHARS, idx3, idx3))
+                    table.insert(result, "=")
+                end
+            else
+                local idx2 = (a % 4) * 16 + 1
+                table.insert(result, string.sub(B64_CHARS, idx2, idx2))
+                table.insert(result, "==")
+            end
+            i = i + 3
+        end
+        return table.concat(result)
+    end
+    local B64_DECODE = {}
+    for i = 1, #B64_CHARS do
+        B64_DECODE[string.byte(B64_CHARS, i)] = i - 1
+    end
+    local function b64decode(data)
+        data = tostring(data or ""):gsub("[^%w%+%/%=]", "")
+        data = data:gsub("=+$", "")
+        local result = {}
+        local i = 1
+        while i <= #data do
+            local a = B64_DECODE[string.byte(data, i)] or 0
+            local b = B64_DECODE[string.byte(data, i+1)] or 0
+            local c = B64_DECODE[string.byte(data, i+2)]
+            local d = B64_DECODE[string.byte(data, i+3)]
+            local byte1 = a * 4 + math.floor(b / 16)
+            table.insert(result, string.char(byte1))
+            if c then
+                local byte2 = (b % 16) * 16 + math.floor(c / 4)
+                table.insert(result, string.char(byte2))
+                if d then
+                    local byte3 = (c % 4) * 64 + d
+                    table.insert(result, string.char(byte3))
+                end
+            end
+            i = i + 4
+        end
+        return table.concat(result)
+    end
+    env.crypt = setmetatable({
+        base64encode = b64encode,
+        base64decode = b64decode,
+        encrypt = function(data, key, iv, mode)
+            -- Simple XOR cipher as a placeholder (real executors use AES)
+            local result = {}
+            for i = 1, #data do
+                local keyByte = string.byte(key, (i-1) % #key + 1)
+                table.insert(result, string.char(bit32.bxor(string.byte(data, i), keyByte)))
+            end
+            return table.concat(result), iv or "0000000000000000"
+        end,
+        decrypt = function(data, key, iv, mode)
+            local result = {}
+            for i = 1, #data do
+                local keyByte = string.byte(key, (i-1) % #key + 1)
+                table.insert(result, string.char(bit32.bxor(string.byte(data, i), keyByte)))
+            end
+            return table.concat(result)
+        end,
+        generatebytes = function(size)
+            size = tonumber(size) or 16
+            local bytes = {}
+            for i = 1, size do
+                table.insert(bytes, string.char(math.random(0, 255)))
+            end
+            return b64encode(table.concat(bytes))
+        end,
+        generatekey = function()
+            local bytes = {}
+            for i = 1, 32 do
+                table.insert(bytes, string.char(math.random(0, 255)))
+            end
+            return b64encode(table.concat(bytes))
+        end,
+        hash = function(data, algorithm)
+            -- Use serde.hash for real hashing
+            local ok, result = pcall(serde.hash, algorithm or "sha256", data)
+            if ok and type(result) == "string" then return result end
+            -- Fallback: simple hash
+            return b64encode(tostring(data))
+        end,
+    }, { __index = function(_, k) return function() return "" end end })
+    env.base64 = { encode = b64encode, decode = b64decode }
     env.syn = setmetatable({
-        request = function() return { StatusCode = 200, Body = "", Success = true } end,
+        request = function(opts)
+            -- Forward to the real http_request so syn.request actually makes
+            -- HTTP calls (needed by anti-tamper scripts that fetch real data).
+            return env.http_request(opts)
+        end,
         queue = function() return {} end,
         crypt = env.crypt,
         base64 = env.base64,
         aux = setmetatable({}, { __index = function(_, k) return function() return nil end end }),
     }, { __index = function(_, k) return function() return nil end end })
     env.getregistry = function() return {} end
+    env.getreg = function() return {} end
     env.getidentity = function() return 7 end
     env.getthread = function() return coroutine.running() end
     env.getstack = function() return {} end
@@ -5747,7 +6232,21 @@ local function createEnv()
     env.isourclosure = function() return true end
     env.isexecutorclosure = function() return true end
     env.isfunction = function(f) return type(f) == "function" end
-    env.Path2DControlPoint = makeProxy("Path2DControlPoint")
+    env.Path2DControlPoint = setmetatable({
+        new = function(position, leaveTangent, rightTangent)
+            local v = genVar("p2dcp")
+            local posSer = serialize(position)
+            emit(string.format('local %s = Path2DControlPoint.new(%s)', v, posSer))
+            local proxy = makeProxy(v)
+            local mt = getmetatable(proxy)
+            mt._className = "Path2DControlPoint"
+            mt._storedValues["ClassName"] = "Path2DControlPoint"
+            mt._setKeys["ClassName"] = true
+            mt._storedValues["Position"] = position
+            mt._setKeys["Position"] = true
+            return proxy
+        end,
+    }, { __index = function(_, k) return makeProxy("Path2DControlPoint." .. tostring(k)) end })
     env.CrosshairImage = makeProxy("CrosshairImage")
     env.IB_CRASH = false
     env.DControlPoint = makeProxy("DControlPoint")
@@ -5759,8 +6258,15 @@ local function createEnv()
     local hiddenFuncs = {}
     for k, v in pairs(env) do
         if type(k) == "string" and (k:lower():find("hook") or k:lower():find("closure")) then
-            hiddenFuncs[k] = v
-            env[k] = nil
+            -- Keep these visible because anti-tamper scripts test for their presence:
+            -- hookmetamethod, hookfunction, clonefunction, islclosure, iscclosure, isourclosure, isexecutorclosure, is_syn_closure, etc.
+            local keepVisible = k == "hookmetamethod" or k == "hookfunction" or k == "clonefunction"
+                or k == "islclosure" or k == "iscclosure" or k == "isourclosure" or k == "isexecutorclosure"
+                or k == "is_syn_closure" or k == "is_fluxus_closure" or k == "is_sentinel_closure" or k == "is_krnl_closure"
+            if not keepVisible then
+                hiddenFuncs[k] = v
+                env[k] = nil
+            end
         end
     end
     local existingEnvMt = getmetatable(env)
@@ -5772,6 +6278,10 @@ local function createEnv()
                 return existingEnvMt.__index[k]
             end
             return nil
+        end,
+        __newindex = function(t, k, v)
+            -- Allow setting globals via getgenv() or direct assignment
+            rawset(t, k, v)
         end,
     })
 
