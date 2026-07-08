@@ -5741,6 +5741,7 @@ local function createEnv()
     env.Enum = setmetatable({
         GetEnumItems = function() return {} end,
     }, {
+        _isProxy = true,
         __index = function(_, k)
             return getOrCreateEnumType(tostring(k))
         end
