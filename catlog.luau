@@ -3927,6 +3927,12 @@ makeProxy = function(name: string): any
                 [183660844] = { Name = "Roblox", Description = "", AssetTypeId = 1,
                                 Creator = { Id = 0, Name = "Roblox", CreatorType = "User" },
                                 IsForSale = false, PriceInRobux = 0, ContentRatingTypeId = 0 },
+                [1952] = { Name = "Headless Head", Description = "", AssetTypeId = 41,
+                           Creator = { Id = 0, Name = "Roblox", CreatorType = "User" },
+                           IsForSale = true, PriceInRobux = 31000, ContentRatingTypeId = 0 },
+                [13423082579] = { Name = "Headless Head", Description = "", AssetTypeId = 41,
+                                  Creator = { Id = 0, Name = "Roblox", CreatorType = "User" },
+                                  IsForSale = true, PriceInRobux = 31000, ContentRatingTypeId = 0 },
             }
             local known = KNOWN_ASSETS[id]
             if known then
@@ -5528,6 +5534,12 @@ local function createEnv()
                 end
                 return "userdata"
             end
+            if m and (m._isEnumType or m._enumName) then
+                return "userdata"
+            end
+        end
+        if x == env.Enum or x == env.Enums then
+            return "userdata"
         end
         return t
     end
@@ -5741,7 +5753,6 @@ local function createEnv()
     env.Enum = setmetatable({
         GetEnumItems = function() return {} end,
     }, {
-        _isProxy = true,
         __index = function(_, k)
             return getOrCreateEnumType(tostring(k))
         end
