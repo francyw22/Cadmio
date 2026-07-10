@@ -181,7 +181,27 @@ async def analyze(ctx: commands.Context, *, text: str = ""):
 
 def run_promdeobf(code: str) -> tuple[bool, str]:
     if "wearedevs.net/obfuscator" in code.lower() or "wearedevs" in code.lower():
-        return run_lune(code)
+        wearedevs_script = os.path.join(PROMDEOBF_DIR, "wearedevs.js")
+        if os.path.isfile(wearedevs_script):
+            with tempfile.TemporaryDirectory() as tmp:
+                input_path = os.path.join(tmp, "input.lua")
+                output_path = os.path.join(tmp, "out.lua")
+                with open(input_path, "w", encoding="utf-8") as f:
+                    f.write(code)
+                try:
+                    proc = subprocess.run(
+                        ["node", wearedevs_script, input_path, output_path],
+                        capture_output=True, text=True, timeout=PROMDEOBF_TIMEOUT,
+                        cwd=PROMDEOBF_DIR,
+                    )
+                except FileNotFoundError:
+                    return False, "Node.js is not installed."
+                except subprocess.TimeoutExpired:
+                    return False, "exceeded the time limit (120s)."
+                if os.path.exists(output_path):
+                    with open(output_path, "r", encoding="utf-8", errors="ignore") as f:
+                        return True, f.read()
+                return False, (proc.stderr or proc.stdout or "Unknown error").strip()[:1900]
 
     if not os.path.isfile(PROMDEOBF_MAIN):
         return run_lune(code)
