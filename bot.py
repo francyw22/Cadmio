@@ -1,3 +1,4 @@
+-- run the bot
 import os
 import io
 import asyncio
