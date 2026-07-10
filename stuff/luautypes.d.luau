@@ -1,12 +1,6 @@
--- Automated Dump of all statically declared type annotations injected into Roblox's Luau environment.
--- This does not include anything from stock Luau or Roblox's reflection system.
-
--- Types here are *not* guaranteed to be stable, bugs may come up that break this scanner.
--- If anything critical does disappear from here, file an issue at this link:
--- https://github.com/MaximumADHD/Roblox-Client-Tracker/issues
 
 
--- SECTION BEGIN: RobloxGlobals
+
 
 
 declare function wait(delay: number?): (number, number)
@@ -51,10 +45,8 @@ declare task: {
 
 
 
--- SECTION END: RobloxGlobals
 
 
--- SECTION BEGIN: TestEZ
 
 
 type Expectation = {
@@ -97,10 +89,8 @@ declare function afterAll(eachFn: EachFunction)
 
 
 
--- SECTION END: TestEZ
 
 
--- SECTION BEGIN: BehaviorScript
 
     type Behavior = {
         DeclareField: (fieldName: string, {Type: "boolean" | "cframe" | "color3" | "enum" | "number" | "instance" | "random" | "vector2" | "vector3"}) -> (),
@@ -117,10 +107,8 @@ declare function afterAll(eachFn: EachFunction)
     declare Behavior: Behavior
 
 
--- SECTION END: BehaviorScript
 
 
--- SECTION BEGIN: Reflection Adjacent
 
 type NotificationButton = {
     Text: string,
@@ -195,7 +183,6 @@ type ReflectionType = {
   ScriptType: string?,
   EnumType: string?,
   InstanceType: string?
-  -- ContentType: Enum.AssetType?,
 }
 
 type ReflectionParameter = {
@@ -208,13 +195,9 @@ type ReflectedProperty = {
   Name: string,
   Serialized: boolean,
   Owner: string?,
-  -- AliasFor: string?,
 
   Type: ReflectionType,
   ContentType: Enum.AssetType?,
-  -- DefaultValue: any,
-  -- MinValue: number?,
-  -- MaxValue: number?
 
   Display: {
     Category: string,
@@ -650,4 +633,3 @@ type VirtualInputPointerAction = {
 }
 
 
--- SECTION END: Reflection Adjacent

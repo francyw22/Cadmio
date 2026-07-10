@@ -18,7 +18,6 @@ do
         return str
     end
 
-    --> is our pcall safe?
 
     if not pcall(function()
         debug, coroutine, mother, is_detected = nil, nil, nil, "yes, you're really detected buddy. (this is just a message to talk to you, i don't get to talk to people 🙁)"
@@ -27,31 +26,10 @@ do
     end) then while true do end end
 
     local errWrapped = function(a)
-        --debug, coroutine, mother, is_detected = nil, nil, nil, "yes, you're really detected buddy. (this is just a message to talk to you, i don't get to talk to people 🙁)"
 
-        --print("detected",a)
 
-        --[[local function x(...)
-            while true do
-                gfv()[rstr(math.random(67, 128))] = true
-            end
-        end]]
         
         while true do
-            --[[if not x(function()
-                while true do
-                    print(a or "you're fUD bro 😭😭")
-                end
-            end, function()
-                while true do end
-            end) or true then
-                repeat until false
-
-                warn("BRO YOU'RE DETECTED STOP TRYING 💔💔")
-
-                valid = false
-            end]]
-            --print(a)--pcall(function() print(a) end);
 
             repeat
                 local _ = env[rstr(11)]
@@ -132,14 +110,12 @@ do
 
     valid = valid and acc1 == acc2
 
-    -- Anti Function Arg Hook
     local obj = setmetatable({}, {
         __tostring = err,
     })
     obj[math.random(1, 100)] = obj;
     (function() end)(obj)
 
-    -- anti metatable hook
     if pcall(function()
         setmetatable(game, {})
     end) then
@@ -291,7 +267,6 @@ do
     if not time then err("!??!?!?") end
     if Vector3int16.new(1, 1, 1).X ~= Vector2int16.new(1, 1).X then err(":(") end
 
-    -- test actual game logic
 
     local Frame = Instance.new("Frame")
     Frame.Position = UDim2.new(0, 0, 0, 0)
@@ -326,13 +301,11 @@ do
         end
     end
 
-    -- properties
 
     if pcall(function()
         local _ = Instance.new("Part")[rstr(math.random(12, 16))]
     end) then err() end
 
-    -- force a newcclosure & test it out
 
     do
         local metatable = setmetatable({}, {
@@ -341,7 +314,6 @@ do
             end
         })
 
-        -- now, metatable[function()end] is executed in a newcclosure, therefore it shouldn't be able to yield (alongside some other properties which are irrelevant)
 
         if pcall(function()
             local _ = metatable[task.wait]

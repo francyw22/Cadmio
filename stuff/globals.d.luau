@@ -1,4 +1,3 @@
---#region Helper types
 
 type GenericFunction<A..., R...> = (A...) -> R...
 type GenericScript = LocalScript | ModuleScript
@@ -9,7 +8,6 @@ type BuiltIn = nil | string | number | boolean
 type BooleanNumber = number -- 0 or 1, used where the executor returns a Lua number instead of a real boolean
 type userdata = typeof(newproxy())
 
--- Names of metamethods usable with hookmetamethod / getrawmetatable-style APIs
 type Metamethods =
 	"__index" |
 	"__newindex" |
@@ -33,13 +31,9 @@ type Metamethods =
 	"__iter" |
 	"__namecall"
 
---#endregion
 
 
---#region Aliases
 
--- Some executors expose the same capability under multiple names.
--- These aliases just point the alternate name at the canonical function's type.
 
 declare secure_call: any
 declare protect_gui: any
@@ -49,13 +43,10 @@ declare HttpPost: typeof(request) -- alias for `request`
 
 declare getexecutorname: typeof(identifyexecutor) -- alias for `identifyexecutor`
 
---#endregion
 
 
---#region Cache
 
 type cache = {
-	--[=[
 		Checks whether `object` is present in the instance cache
 		(i.e. whether Lua-side references to it are still tracked normally).
 
@@ -64,7 +55,6 @@ type cache = {
 	]=]
 	iscached: (object: Instance) -> boolean,
 
-	--[=[
 		Removes `object` from the instance cache. Future references obtained
 		through the API (e.g. `game:GetService(...)`) will return a fresh,
 		un-cached userdata for the same instance, which is useful for hiding
@@ -74,7 +64,6 @@ type cache = {
 	]=]
 	invalidate: (object: Instance) -> (),
 
-	--[=[
 		Replaces every cached reference to `object` with `newObject`, so future
 		lookups resolve to `newObject` instead.
 
@@ -86,12 +75,9 @@ type cache = {
 
 declare cache: cache
 
---#endregion
 
 
---#region Closures
 
---[=[
 	Returns true if the function currently executing is running because the
 	executor itself called it (as opposed to being called by the game).
 	Commonly used inside hooks to distinguish your own calls from the game's.
@@ -100,7 +86,6 @@ declare cache: cache
 ]=]
 declare function checkcaller(): boolean
 
---[=[
 	Creates an independent copy of `function_to_clone`. The clone behaves
 	identically but is a distinct closure, so hooking the original does not
 	affect the clone (and vice versa).
@@ -112,7 +97,6 @@ declare function clonefunction<A..., R...>(
 	function_to_clone: GenericFunction<A..., R...>
 ): GenericFunction<A..., R...>
 
---[=[
 	Returns a SHA384 (or executor-specific) hash of a function's bytecode.
 	Two functions with identical bytecode return the same hash, which is
 	useful for identifying a function without relying on its (possibly
@@ -125,7 +109,6 @@ declare function getfunctionhash(
 	function_to_hash: AnyFunction
 ): string
 
---[=[
 	Replaces `function_to_hook` with `hook` at the closure level: every future
 	call to `function_to_hook` (from any script, including the game) invokes
 	`hook` instead. Returns a new callable that still points at the original
@@ -140,7 +123,6 @@ declare function hookfunction<A..., R...>(
 	hook: GenericFunction<A..., R...>
 ): GenericFunction<A..., R...>
 
---[=[
 	Hooks a metamethod (e.g. "__index", "__namecall") on a table or Instance's
 	metatable, even if the metatable is protected/locked. Returns a callable
 	referencing the original metamethod so it can still be invoked from your hook.
@@ -156,7 +138,6 @@ declare function hookmetamethod<A..., R...>(
 	hook: GenericFunction<A..., R...>
 ): GenericFunction<A..., R...>
 
---[=[
 	Returns true if `func` is a C closure (implemented natively by the
 	executor/engine) rather than compiled Lua bytecode.
 
@@ -167,7 +148,6 @@ declare function iscclosure(
 	func: AnyFunction
 ): boolean
 
---[=[
 	Returns true if `func` originates from the executor itself (as opposed to
 	the game or a loaded script).
 
@@ -178,7 +158,6 @@ declare function isexecutorclosure(
 	func: AnyFunction
 ): boolean
 
---[=[
 	Returns true if `func` is an L closure, i.e. a normal function compiled
 	from Lua source (the opposite of a C closure).
 
@@ -189,7 +168,6 @@ declare function islclosure(
 	func: AnyFunction
 ): boolean
 
---[=[
 	Wraps `function_to_wrap` so it behaves like a C closure from the engine's
 	point of view. Commonly used to make a Lua function pass `iscclosure`
 	checks, avoid yield-across-metamethod errors, and be harder to detect as
@@ -202,7 +180,6 @@ declare function newcclosure<A..., R...>(
 	function_to_wrap: GenericFunction<A..., R...>
 ): GenericFunction<A..., R...>
 
---[=[
 	Reverts a function previously replaced by `hookfunction` back to its
 	original behavior. No-op if the function was never hooked.
 
@@ -212,7 +189,6 @@ declare function restorefunction(
 	functionToRestore: AnyFunction
 ): ()
 
---[=[
 	Returns the method name used in the current `__namecall` metamethod call
 	(e.g. "FireServer", "Destroy"). Only meaningful while inside a
 	`__namecall` hook/context; errors or returns an empty string otherwise.
@@ -221,7 +197,6 @@ declare function restorefunction(
 ]=]
 declare function getnamecallmethod(): string
 
---[=[
 	Compiles `src` into a callable function without executing it, similar to
 	standard Lua `loadstring`. On failure returns `nil` plus an error message.
 
@@ -235,21 +210,15 @@ declare function loadstring<A...>(
 	chunkname: string?
 ): (((A...) -> any) | nil, string?)
 
---#endregion
 
 
---#region Console
 
---[=[ Clears all text from the executor's dedicated console window. ]=]
 declare function rconsoleclear(): ()
 
---[=[ Opens/creates the executor's dedicated console window. ]=]
 declare function rconsolecreate(): ()
 
---[=[ Closes and destroys the executor's dedicated console window. ]=]
 declare function rconsoledestroy(): ()
 
---[=[
 	Blocks and waits for a line of user input typed into the console window,
 	then returns it.
 
@@ -257,7 +226,6 @@ declare function rconsoledestroy(): ()
 ]=]
 declare function rconsoleinput(): string
 
---[=[
 	Prints `text` to the executor's dedicated console window (separate from
 	the in-game/output log).
 
@@ -265,17 +233,14 @@ declare function rconsoleinput(): string
 ]=]
 declare function rconsoleprint(text: string): ()
 
---[=[
 	Sets the title/caption of the executor's dedicated console window.
 
 	@param title string
 ]=]
 declare function rconsolesettitle(title: string): ()
 
---#endregion
 
 
---#region Cryptography
 
 type CryptCipherMode =
 	"CBC" |
@@ -296,7 +261,6 @@ type CryptHashAlgorithm =
 	"sha3-512"
 
 type crypt = {
-	--[=[
 		Decodes a base64-encoded string back into raw bytes.
 
 		@param data string -- base64 text
@@ -304,7 +268,6 @@ type crypt = {
 	]=]
 	base64decode: (data: string) -> string,
 
-	--[=[
 		Encodes raw bytes as a base64 string.
 
 		@param data string -- raw bytes
@@ -312,7 +275,6 @@ type crypt = {
 	]=]
 	base64encode: (data: string) -> string,
 
-	--[=[
 		Encrypts `data` with `key` using the given cipher mode (defaults to an
 		executor-chosen mode, commonly CBC). If `iv` is omitted, one is
 		generated for you and returned alongside the ciphertext.
@@ -331,7 +293,6 @@ type crypt = {
 		mode: CryptCipherMode?
 	) -> (string, string),
 
-	--[=[
 		Decrypts ciphertext previously produced by `crypt.encrypt`.
 
 		@param data string -- ciphertext to decrypt
@@ -347,7 +308,6 @@ type crypt = {
 		mode: CryptCipherMode
 	) -> string,
 
-	--[=[
 		Generates `size` cryptographically random bytes.
 
 		@param size number -- number of bytes to generate
@@ -355,7 +315,6 @@ type crypt = {
 	]=]
 	generatebytes: (size: number) -> string,
 
-	--[=[
 		Generates a random base64-encoded key suitable for use with
 		`crypt.encrypt` / `crypt.decrypt`.
 
@@ -363,7 +322,6 @@ type crypt = {
 	]=]
 	generatekey: () -> string,
 
-	--[=[
 		Hashes `data` using the specified algorithm.
 
 		@param data string -- input bytes
@@ -378,7 +336,6 @@ type crypt = {
 
 declare crypt: crypt
 
---[=[
 	Shorthand for `crypt.base64encode`.
 
 	@param data string
@@ -386,7 +343,6 @@ declare crypt: crypt
 ]=]
 declare function base64encode(data: string): string
 
---[=[
 	Shorthand for `crypt.base64decode`.
 
 	@param data string
@@ -394,7 +350,6 @@ declare function base64encode(data: string): string
 ]=]
 declare function base64decode(data: string): string
 
---[=[
 	Compresses `data` using LZ4.
 
 	@param data string -- raw bytes to compress
@@ -402,7 +357,6 @@ declare function base64decode(data: string): string
 ]=]
 declare function lz4compress(data: string): string
 
---[=[
 	Decompresses LZ4-compressed data previously produced by `lz4compress`.
 
 	@param data string -- compressed bytes
@@ -411,10 +365,8 @@ declare function lz4compress(data: string): string
 ]=]
 declare function lz4decompress(data: string, size: number?): string
 
---#endregion
 
 
---#region Debug
 
 type DebugInfo = {
 	source: string, -- chunk source string
@@ -429,7 +381,6 @@ type DebugInfo = {
 }
 
 type debug = {
-	--[=[
 		Reads constant #`index` from a function's bytecode (or from the
 		function at stack `level`).
 
@@ -442,7 +393,6 @@ type debug = {
 		index: number
 	) -> BuiltIn,
 
-	--[=[
 		Returns every constant embedded in a function's bytecode.
 
 		@param func_or_level AnyFunction | number
@@ -452,7 +402,6 @@ type debug = {
 		func_or_level: AnyFunction | number
 	) -> { BuiltIn },
 
-	--[=[
 		Gets the prototype (nested function) #`index` defined inside a
 		function. With `activated = true`, returns every currently-alive
 		closure instantiated from that prototype instead of the raw prototype.
@@ -466,7 +415,6 @@ type debug = {
 		((func_or_level: AnyFunction | number, index: number, activated: true) -> { AnyFunction }) &
 		((func_or_level: AnyFunction | number, index: number, activated: false?) -> AnyFunction),
 
-	--[=[
 		Returns every prototype (nested function) defined inside a function.
 
 		@param func_or_level AnyFunction | number
@@ -476,7 +424,6 @@ type debug = {
 		func_or_level: AnyFunction | number
 	) -> { AnyFunction },
 
-	--[=[
 		Reads the value at stack slot `index` of the function currently
 		running at call-stack `level`.
 
@@ -489,7 +436,6 @@ type debug = {
 		index: number?
 	) -> any | AnyArray,
 
-	--[=[
 		Reads upvalue #`index` of a function.
 
 		@param func_or_level AnyFunction | number
@@ -501,7 +447,6 @@ type debug = {
 		index: number
 	) -> any,
 
-	--[=[
 		Returns every upvalue captured by a function.
 
 		@param func_or_level AnyFunction | number
@@ -511,7 +456,6 @@ type debug = {
 		func_or_level: AnyFunction | number
 	) -> AnyArray?,
 
-	--[=[
 		Overwrites constant #`index` in a function's bytecode with `value`.
 
 		@param func_or_level AnyFunction | number
@@ -524,7 +468,6 @@ type debug = {
 		value: BuiltIn
 	) -> (),
 
-	--[=[
 		Overwrites the value at stack slot `index` for the function running at
 		call-stack `level`.
 
@@ -538,7 +481,6 @@ type debug = {
 		value: any
 	) -> (),
 
-	--[=[
 		Overwrites upvalue #`index` of a function with `value`.
 
 		@param func_or_level AnyFunction | number
@@ -551,7 +493,6 @@ type debug = {
 		value: any
 	) -> (),
 
-	--[=[
 		Returns debug metadata (source, current line, param count, etc.) for a
 		function or a given call-stack level.
 
@@ -565,12 +506,9 @@ type debug = {
 
 declare debug: debug & typeof(debug)
 
---#endregion
 
 
---#region Drawing
 
---[=[
 	Base class for all Drawing objects (Line, Text, Image, Circle, Square,
 	Quad, Triangle). Drawing objects render directly to the screen, outside
 	the normal GUI hierarchy.
@@ -582,20 +520,16 @@ declare class DrawingObject
 	Color: Color3
 	__OBJECT_EXISTS: boolean -- true until Remove/Destroy has been called
 
-	--[=[ Removes the drawing object from the screen. ]=]
 	function Remove(self): ()
-	--[=[ Alias for Remove. ]=]
 	function Destroy(self): ()
 end
 
---[=[ A straight line segment drawn between two screen-space points. ]=]
 declare class DrawingLine extends DrawingObject
 	Thickness: number
 	From: Vector2
 	To: Vector2
 end
 
---[=[ A block of on-screen text. ]=]
 declare class DrawingText extends DrawingObject
 	Text: string
 	Size: number
@@ -607,7 +541,6 @@ declare class DrawingText extends DrawingObject
 	Font: number
 end
 
---[=[ An image rendered from raw pixel `Data` (as produced by e.g. EditableImage). ]=]
 declare class DrawingImage extends DrawingObject
 	Data: string
 	Size: Vector2
@@ -615,7 +548,6 @@ declare class DrawingImage extends DrawingObject
 	Rounding: number
 end
 
---[=[ A circle outline or filled disc. ]=]
 declare class DrawingCircle extends DrawingObject
 	Thickness: number
 	NumSides: number
@@ -624,7 +556,6 @@ declare class DrawingCircle extends DrawingObject
 	Position: Vector2
 end
 
---[=[ An axis-aligned square/rectangle outline or filled shape. ]=]
 declare class DrawingSquare extends DrawingObject
 	Thickness: number
 	Size: Vector2
@@ -632,7 +563,6 @@ declare class DrawingSquare extends DrawingObject
 	Filled: boolean
 end
 
---[=[ A 4-point polygon defined by arbitrary corner points. ]=]
 declare class DrawingQuad extends DrawingObject
 	Thickness: number
 	PointA: Vector2
@@ -642,7 +572,6 @@ declare class DrawingQuad extends DrawingObject
 	Filled: boolean
 end
 
---[=[ A 3-point polygon defined by arbitrary corner points. ]=]
 declare class DrawingTriangle extends DrawingObject
 	Thickness: number
 	PointA: Vector2
@@ -667,7 +596,6 @@ export type DrawingNewTypes =
 	"Quad" |
 	"Triangle"
 
---[=[
 	Constructs a new Drawing object of the given kind.
 
 	@param kind "Line" | "Text" | "Image" | "Circle" | "Square" | "Quad" | "Triangle"
@@ -689,10 +617,8 @@ export type Drawing = {
 
 declare Drawing: Drawing
 
---[=[ Clears the internal draw cache/queue used by the Drawing library. ]=]
 declare function cleardrawcache(): ()
 
---[=[
 	Reads a raw property from a Drawing object by name, bypassing the
 	object's normal Luau-level property access.
 
@@ -705,7 +631,6 @@ declare function getrenderproperty(
 	property: string
 ): any
 
---[=[
 	Returns true if `object` is a valid, still-existing Drawing object.
 
 	@param object any
@@ -715,7 +640,6 @@ declare function isrenderobj(
 	object: any
 ): boolean
 
---[=[
 	Writes a raw property on a Drawing object by name.
 
 	@param drawing DrawingObject
@@ -728,10 +652,8 @@ declare function setrenderproperty(
 	value: any
 ): ()
 
---#endregion
 
 
---#region Environment
 
 type FunctionFilterOptions = {
 	Name: string?, -- match by function name
@@ -748,7 +670,6 @@ type TableFilterOptions = {
 	Metatable: any?, -- match tables sharing this metatable
 }
 
---[=[
 	Returns every reachable table/function/etc. tracked by the Lua garbage
 	collector. By default only functions are included.
 
@@ -759,7 +680,6 @@ declare getgc:
 	((include_tables: false?) -> AnyArray) &
 	((include_tables: true) -> { any | AnyArray })
 
---[=[
 	Returns the executor's global environment table (`_G` equivalent scoped
 	to executor-loaded scripts), shared across scripts run by the executor.
 
@@ -767,7 +687,6 @@ declare getgc:
 ]=]
 declare function getgenv(): typeof(_G)
 
---[=[
 	Returns the Lua registry, an internal table used by the VM to keep
 	references alive.
 
@@ -775,7 +694,6 @@ declare function getgenv(): typeof(_G)
 ]=]
 declare function getreg(): AnyArray
 
---[=[
 	Returns the game's own global environment table, as opposed to the
 	executor's (see `getgenv`).
 
@@ -783,7 +701,6 @@ declare function getreg(): AnyArray
 ]=]
 declare function getrenv(): typeof(_G)
 
---[=[
 	Gets the environment table of the function running at call-stack `level`.
 
 	@param level number
@@ -793,7 +710,6 @@ declare function getfenv(
 	level: number
 ): AnyTable
 
---[=[
 	Gets the environment table associated with function `f`.
 
 	@param f function
@@ -803,7 +719,6 @@ declare function getfenv(
 	f: function
 ): AnyTable
 
---[=[
 	Sets the environment table of function `f` to `env`.
 
 	@param f function
@@ -815,7 +730,6 @@ declare function setfenv(
 	env: AnyTable
 ): function
 
---[=[
 	Searches the garbage collector for tables or functions matching the given
 	filter options.
 
@@ -830,15 +744,10 @@ declare filtergc:
 	((filter_type: "function", filter_options: FunctionFilterOptions, return_one: true) -> AnyFunction?) &
 	((filter_type: "function", filter_options: FunctionFilterOptions, return_one: false?) -> { AnyFunction })
 
---#endregion
 
 
---#region Filesystem
 
--- All filesystem functions operate on the executor's sandboxed workspace
--- folder, not the real OS filesystem root.
 
---[=[
 	Appends `contents` to the end of the file at `path`, creating it if it
 	does not already exist.
 
@@ -847,7 +756,6 @@ declare filtergc:
 ]=]
 declare function appendfile(path: string, contents: string): ()
 
---[=[
 	Deletes the file at `path`. No-op (or errors, depending on executor) if
 	it doesn't exist.
 
@@ -855,14 +763,12 @@ declare function appendfile(path: string, contents: string): ()
 ]=]
 declare function delfile(path: string): ()
 
---[=[
 	Recursively deletes the folder at `path` and everything inside it.
 
 	@param path string
 ]=]
 declare function delfolder(path: string): ()
 
---[=[
 	Registers a local file as a game asset and returns an `rbxasset://` (or
 	similar) URI that can be assigned to Image/Sound/etc. properties.
 
@@ -871,19 +777,16 @@ declare function delfolder(path: string): ()
 ]=]
 declare function getcustomasset(path: string): string
 
---[=[
 	@param path string
 	@return boolean -- true if `path` exists and is a file
 ]=]
 declare function isfile(path: string): boolean
 
---[=[
 	@param path string
 	@return boolean -- true if `path` exists and is a folder
 ]=]
 declare function isfolder(path: string): boolean
 
---[=[
 	Lists the contents of a folder.
 
 	@param path string
@@ -891,7 +794,6 @@ declare function isfolder(path: string): boolean
 ]=]
 declare function listfiles(path: string): { string }
 
---[=[
 	Compiles the Lua source in the file at `path` into a callable function,
 	without executing it. On failure returns `nil` plus an error message.
 
@@ -903,14 +805,12 @@ declare function loadfile(
 	path: string
 ): (AnyFunction?, string?)
 
---[=[
 	Creates a folder at `path`, including any missing parent directories.
 
 	@param path string
 ]=]
 declare function makefolder(path: string): ()
 
---[=[
 	Reads and returns the entire contents of the file at `path`.
 
 	@param path string
@@ -918,7 +818,6 @@ declare function makefolder(path: string): ()
 ]=]
 declare function readfile(path: string): string
 
---[=[
 	Writes `data` to the file at `path`, overwriting any existing contents
 	(creates the file if it doesn't exist).
 
@@ -927,7 +826,6 @@ declare function readfile(path: string): string
 ]=]
 declare function writefile(path: string, data: string): ()
 
---[=[
 	Executes the Lua source in the file at `path` immediately, in the current
 	environment.
 
@@ -935,31 +833,21 @@ declare function writefile(path: string, data: string): ()
 ]=]
 declare function dofile(path: string): ()
 
---#endregion
 
 
---#region Input
 
---[=[
 	@return boolean -- true if the Roblox window currently has OS input focus
 ]=]
 declare function isrbxactive(): boolean
 
---[=[ Simulates a full left mouse click (press + release) at the current cursor position. ]=]
 declare function mouse1click(): ()
---[=[ Simulates pressing the left mouse button down. ]=]
 declare function mouse1press(): ()
---[=[ Simulates releasing the left mouse button. ]=]
 declare function mouse1release(): ()
 
---[=[ Simulates a full right mouse click (press + release) at the current cursor position. ]=]
 declare function mouse2click(): ()
---[=[ Simulates pressing the right mouse button down. ]=]
 declare function mouse2press(): ()
---[=[ Simulates releasing the right mouse button. ]=]
 declare function mouse2release(): ()
 
---[=[
 	Moves the mouse cursor to an absolute screen position.
 
 	@param x number
@@ -967,7 +855,6 @@ declare function mouse2release(): ()
 ]=]
 declare function mousemoveabs(x: number, y: number): ()
 
---[=[
 	Moves the mouse cursor relative to its current position.
 
 	@param x number
@@ -975,19 +862,15 @@ declare function mousemoveabs(x: number, y: number): ()
 ]=]
 declare function mousemoverel(x: number, y: number): ()
 
---[=[
 	Simulates scrolling the mouse wheel.
 
 	@param pixels number -- scroll amount; sign determines direction
 ]=]
 declare function mousescroll(pixels: number): ()
 
---#endregion
 
 
---#region Instances
 
---[=[
 	Returns a new reference ("clone") to the same underlying Instance,
 	separate from the cache entry other scripts hold. Useful for holding an
 	instance reference that survives `cache.invalidate`.
@@ -999,7 +882,6 @@ declare function cloneref<T>(
 	object: T & Instance
 ): T
 
---[=[
 	Compares two Instance references for equality even if one has been
 	cloned via `cloneref`, i.e. checks underlying identity rather than
 	reference identity.
@@ -1013,7 +895,6 @@ declare function compareinstances(
 	object2: Instance
 ): boolean
 
---[=[
 	Fires a ClickDetector's server-side click event as if a player clicked it.
 
 	@param object ClickDetector
@@ -1031,7 +912,6 @@ declare function fireclickdetector(
 	)?
 ): ()
 
---[=[
 	Fires a ProximityPrompt's server-side trigger event as if a player
 	activated it.
 
@@ -1041,7 +921,6 @@ declare function fireproximityprompt(
 	object: ProximityPrompt
 ): ()
 
---[=[
 	Fires the Touched/TouchEnded interest between two BaseParts as if they
 	physically touched, without requiring real physics contact.
 
@@ -1055,7 +934,6 @@ declare function firetouchinterest(
 	toggle: boolean | BooleanNumber
 ): ()
 
---[=[
 	Retrieves the function bound to a callback-type property (e.g.
 	`BindableFunction.OnInvoke`, `RemoteFunction.OnClientInvoke`), which is
 	not normally readable through the property directly.
@@ -1069,7 +947,6 @@ declare function getcallbackvalue(
 	property: string
 ): AnyFunction
 
---[=[
 	Returns the executor's dedicated, hidden-from-game GUI container
 	(commonly used instead of CoreGui/PlayerGui so injected GUIs stay hidden
 	from anti-cheat/game scripts).
@@ -1078,7 +955,6 @@ declare function getcallbackvalue(
 ]=]
 declare function gethui(): Instance
 
---[=[
 	Returns every Instance that currently exists in the game, including ones
 	not parented under `game` (e.g. temporarily orphaned instances).
 
@@ -1086,7 +962,6 @@ declare function gethui(): Instance
 ]=]
 declare function getinstances(): { Instance }
 
---[=[
 	Returns every Instance parented under `nil` (i.e. removed from the
 	DataModel but not yet garbage collected).
 
@@ -1094,7 +969,6 @@ declare function getinstances(): { Instance }
 ]=]
 declare function getnilinstances(): { Instance }
 
---[=[
 	Checks whether a property on an Instance is currently scriptable (i.e.
 	readable/writable from Lua), as opposed to engine-restricted.
 
@@ -1107,7 +981,6 @@ declare function isscriptable(
 	property: string
 ): boolean
 
---[=[
 	Sets the system clipboard content directly from engine-level data (as
 	opposed to `setclipboard`, which is typically used for plain text).
 
@@ -1118,12 +991,9 @@ declare function setrbxclipboard(
 	data: string
 ): boolean
 
---#endregion
 
 
---#region Metatable
 
---[=[
 	Returns the raw metatable of `object`, bypassing the `__metatable` field
 	that would normally block `getmetatable`.
 
@@ -1134,7 +1004,6 @@ declare function getrawmetatable(
 	object: any
 ): AnyTable?
 
---[=[
 	@param table AnyTable
 	@return boolean -- true if the table is read-only (frozen)
 ]=]
@@ -1142,7 +1011,6 @@ declare function isreadonly(
 	table: AnyTable
 ): boolean
 
---[=[
 	Forcibly replaces `object`'s metatable, bypassing `__metatable`
 	protection.
 
@@ -1155,7 +1023,6 @@ declare function setrawmetatable<T>(
 	metatable: AnyTable
 ): T
 
---[=[
 	Sets whether `table` is read-only (frozen). Can be used to freeze a
 	table, or to unfreeze one that was previously frozen (including tables
 	frozen by the engine itself).
@@ -1168,10 +1035,8 @@ declare function setreadonly(
 	state: boolean
 ): ()
 
---#endregion
 
 
---#region Miscellaneous
 
 type Request = {
 	Url: string,
@@ -1190,8 +1055,6 @@ type Response = {
 }
 
 type ExtraDataModel = {
-	-- Executor-provided overload of DataModel:HttpGet that exposes extra,
-	-- normally-internal parameters.
 	HttpGet: (
 		self: typeof(game),
 		url: string,
@@ -1203,7 +1066,6 @@ type ExtraDataModel = {
 	Players: Players,
 }
 
---[=[
 	Identifies the current executor.
 
 	@return string -- executor name
@@ -1211,7 +1073,6 @@ type ExtraDataModel = {
 ]=]
 declare function identifyexecutor(): (string, string)
 
---[=[
 	Sends an HTTP request from outside the game's sandbox (bypassing
 	Roblox's usual HttpService domain restrictions).
 
@@ -1222,7 +1083,6 @@ declare function request(
 	options: Request
 ): Response
 
---[=[
 	Sets the system clipboard to plain text.
 
 	@param text string
@@ -1231,7 +1091,6 @@ declare function setclipboard(
 	text: string
 ): ()
 
---[=[
 	Sets (and typically unlocks/overrides) the client's frame-rate cap.
 
 	@param fps number -- target FPS; 0 or a negative value commonly means "uncapped"
@@ -1240,7 +1099,6 @@ declare function setfpscap(
 	fps: number
 ): ()
 
---[=[
 	Queues Lua source to run automatically immediately after the next
 	teleport completes, in the new place.
 
@@ -1250,7 +1108,6 @@ declare function queue_on_teleport(
 	code: string
 ): ()
 
---[=[
 	Shows a native OS message box.
 
 	@param text string -- body text
@@ -1266,12 +1123,9 @@ declare function messagebox(
 
 declare game: typeof(game) & ExtraDataModel
 
---#endregion
 
 
---#region Reflection
 
---[=[
 	Reads a property that is normally hidden/non-scriptable on an Instance.
 
 	@param instance Instance
@@ -1284,7 +1138,6 @@ declare function gethiddenproperty(
 	property_name: string
 ): (any, boolean)
 
---[=[
 	Returns the identity/context level of the currently running thread
 	(Roblox's internal security context number).
 
@@ -1292,7 +1145,6 @@ declare function gethiddenproperty(
 ]=]
 declare function getthreadidentity(): number
 
---[=[
 	Writes a property that is normally hidden/non-scriptable on an Instance.
 
 	@param instance Instance
@@ -1306,7 +1158,6 @@ declare function sethiddenproperty(
 	property_value: any
 ): boolean
 
---[=[
 	Sets whether a property on an Instance is scriptable, letting you expose
 	(or hide) properties that are normally blocked from Lua access.
 
@@ -1321,7 +1172,6 @@ declare function setscriptable(
 	state: boolean
 ): boolean?
 
---[=[
 	Sets the identity/context level of the currently running thread.
 
 	@param id number -- target identity/context level
@@ -1330,12 +1180,9 @@ declare function setthreadidentity(
 	id: number
 ): ()
 
---#endregion
 
 
---#region Scripts
 
---[=[
 	Returns the script that called into the currently executing function,
 	i.e. the script one level up the call stack.
 
@@ -1343,7 +1190,6 @@ declare function setthreadidentity(
 ]=]
 declare function getcallingscript(): GenericScript?
 
---[=[
 	Returns every currently loaded ModuleScript.
 
 	@param excludeCore boolean? -- true to skip Roblox CoreScripts' modules
@@ -1353,14 +1199,12 @@ declare function getloadedmodules(
 	excludeCore: boolean?
 ): { ModuleScript }
 
---[=[
 	Returns every script (LocalScript/ModuleScript) currently running.
 
 	@return { GenericScript }
 ]=]
 declare function getrunningscripts(): { GenericScript }
 
---[=[
 	Returns the compiled Luau bytecode for a script, decompiled sufficiently
 	to be re-loadable, or nil if it can't be retrieved (e.g. protected).
 
@@ -1371,7 +1215,6 @@ declare function getscriptbytecode(
 	script: GenericScript
 ): string?
 
---[=[
 	Returns the actual function closure backing a script, i.e. the callable
 	you could invoke to re-run the script's top-level code.
 
@@ -1382,7 +1225,6 @@ declare function getscriptclosure(
 	script: GenericScript
 ): AnyFunction?
 
---[=[
 	Returns a hash of a script's bytecode (see `getfunctionhash`), useful for
 	identifying a script's contents without relying on its name.
 
@@ -1393,7 +1235,6 @@ declare function getscripthash(
 	script: GenericScript
 ): string?
 
---[=[
 	Returns every script instance (LocalScript/ModuleScript) reachable in the
 	game, whether currently running or not.
 
@@ -1401,7 +1242,6 @@ declare function getscripthash(
 ]=]
 declare function getscripts(): { GenericScript }
 
---[=[
 	Returns the environment table (globals) of a specific script.
 
 	@param script GenericScript
@@ -1411,12 +1251,9 @@ declare function getsenv(
 	script: GenericScript
 ): { [any]: any }
 
---#endregion
 
 
---#region Signals
 
---[=[
 	Represents a single connection to an RBXScriptSignal, with extra
 	introspection/control not exposed by the normal RBXScriptConnection.
 ]=]
@@ -1427,19 +1264,13 @@ declare class Connection
 	Function: AnyFunction? -- the connected handler, if it's a Lua function
 	Thread: thread? -- the coroutine the handler runs on, if applicable
 
-	--[=[ Immediately invokes the connected handler with the given arguments. ]=]
 	function Fire(self, ...: any): ()
-	--[=[ Schedules the connected handler to run deferred with the given arguments. ]=]
 	function Defer(self, ...: any): ()
-	--[=[ Disconnects this connection so it no longer fires. ]=]
 	function Disconnect(self): ()
-	--[=[ Temporarily disables this connection without disconnecting it. ]=]
 	function Disable(self): ()
-	--[=[ Re-enables a previously disabled connection. ]=]
 	function Enable(self): ()
 end
 
---[=[
 	Fires `signal` with the given arguments for every currently connected
 	listener, without needing to actually trigger the underlying engine
 	event.
@@ -1452,7 +1283,6 @@ declare function firesignal<T...>(
 	...: T...
 ): ()
 
---[=[
 	Returns every current connection to `signal`, including ones made by
 	other scripts, as `Connection` objects supporting Fire/Disable/etc.
 
@@ -1463,7 +1293,6 @@ declare function getconnections<T...>(
 	signal: RBXScriptSignal<T...>
 ): { Connection }
 
---[=[
 	Fires `signal` as if it originated from a network replication event
 	(server -> client or client -> server), rather than firing it locally.
 
@@ -1475,16 +1304,13 @@ declare function replicatesignal<T...>(
 	...: T...
 ): ()
 
---#endregion
 
 
---#region WebSocket
 
 type WebSocketConnection = {
 	OnMessage: RBXScriptSignal<string>, -- fires with each incoming text message
 	OnClose: RBXScriptSignal<()>, -- fires when the connection closes
 
-	--[=[
 		Sends a text message over the connection.
 
 		@param message string
@@ -1494,14 +1320,12 @@ type WebSocketConnection = {
 		message: string
 	) -> (),
 
-	--[=[ Closes the WebSocket connection. ]=]
 	Close: (
 		self: WebSocketConnection
 	) -> (),
 }
 
 type WebSocket = {
-	--[=[
 		Opens a new WebSocket connection to `url` (ws:// or wss://).
 
 		@param url string
@@ -1514,4 +1338,3 @@ type WebSocket = {
 
 declare WebSocket: WebSocket
 
---#endregion

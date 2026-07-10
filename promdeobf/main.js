@@ -428,4 +428,7 @@ const deobfuscate = async (path, outFile="out.lua") => {
     ))
 }
 
-deobfuscate(process.argv[2], process.argv[3])
+deobfuscate(process.argv[2], process.argv[3]).catch(err => {
+    console.error('Deobfuscation failed:', err.message || err)
+    process.exit(1)
+})

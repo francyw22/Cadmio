@@ -210,12 +210,17 @@ def run_promdeobf(code: str) -> tuple[bool, str]:
         except subprocess.TimeoutExpired:
             return False, "exceeded the time limit (120s)."
 
+        if proc.returncode != 0:
+            err = (proc.stderr or proc.stdout or "").strip()
+            if err:
+                return False, err[:1900]
+            return False, "Deobfuscation failed with no error message."
+
         if os.path.exists(output_path):
             with open(output_path, "r", encoding="utf-8", errors="ignore") as f:
                 return True, f.read()
 
-        err = (proc.stderr or proc.stdout or "Unknown error").strip()
-        return False, err[:1900]
+        return False, "No output file was produced."
 
 
 @bot.command(name="promdeobf")
