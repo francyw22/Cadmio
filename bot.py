@@ -180,8 +180,11 @@ async def analyze(ctx: commands.Context, *, text: str = ""):
 
 
 def run_promdeobf(code: str) -> tuple[bool, str]:
+    if "wearedevs.net/obfuscator" in code.lower() or "wearedevs" in code.lower():
+        return run_lune(code)
+
     if not os.path.isfile(PROMDEOBF_MAIN):
-        return False, "promdeobf is not installed. Put the promdeobf folder next to bot.py."
+        return run_lune(code)
 
     with tempfile.TemporaryDirectory() as tmp:
         input_path = os.path.join(tmp, "input.lua")
@@ -211,16 +214,13 @@ def run_promdeobf(code: str) -> tuple[bool, str]:
             return False, "exceeded the time limit (120s)."
 
         if proc.returncode != 0:
-            err = (proc.stderr or proc.stdout or "").strip()
-            if err:
-                return False, err[:1900]
-            return False, "Deobfuscation failed with no error message."
+            return run_lune(code)
 
         if os.path.exists(output_path):
             with open(output_path, "r", encoding="utf-8", errors="ignore") as f:
                 return True, f.read()
 
-        return False, "No output file was produced."
+        return run_lune(code)
 
 
 @bot.command(name="promdeobf")
