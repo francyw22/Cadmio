@@ -20,8 +20,11 @@ API_DUMP = os.path.join(STUFF_DIR, "API-Dump.json")
 CLASSES_JSON = os.path.join(STUFF_DIR, "classes.json")
 ENUMS_JSON = os.path.join(STUFF_DIR, "enums.json")
 ASSETIDS_JSON = os.path.join(STUFF_DIR, "assetids.json")
+PROMDEOBF_DIR = os.path.join(SCRIPT_DIR, "promdeobf")
+PROMDEOBF_MAIN = os.path.join(PROMDEOBF_DIR, "main.js")
 LUNE_BIN = os.getenv("LUNE_BIN", "lune")
 TIMEOUT_SECONDS = 30
+PROMDEOBF_TIMEOUT = 120
 
 NO_MENTIONS = discord.AllowedMentions.none()
 
@@ -172,6 +175,74 @@ async def analyze(ctx: commands.Context, *, text: str = ""):
     if len(result) > 1900:
         file = discord.File(io.BytesIO(result.encode("utf-8")), filename="result.lua")
         await ctx.reply("done, attached file:", file=file, allowed_mentions=NO_MENTIONS)
+    else:
+        await ctx.reply(f"Result:\n```lua\n{result}\n```", allowed_mentions=NO_MENTIONS)
+
+
+def run_promdeobf(code: str) -> tuple[bool, str]:
+    if not os.path.isfile(PROMDEOBF_MAIN):
+        return False, "promdeobf is not installed. Put the promdeobf folder next to bot.py."
+
+    with tempfile.TemporaryDirectory() as tmp:
+        input_path = os.path.join(tmp, "input.lua")
+        output_path = os.path.join(tmp, "out.lua")
+
+        with open(input_path, "w", encoding="utf-8") as f:
+            f.write(code)
+
+        cmd = [
+            "node",
+            PROMDEOBF_MAIN,
+            input_path,
+            output_path,
+        ]
+
+        try:
+            proc = subprocess.run(
+                cmd,
+                capture_output=True,
+                text=True,
+                timeout=PROMDEOBF_TIMEOUT,
+                cwd=PROMDEOBF_DIR,
+            )
+        except FileNotFoundError:
+            return False, "Node.js is not installed."
+        except subprocess.TimeoutExpired:
+            return False, "exceeded the time limit (120s)."
+
+        if os.path.exists(output_path):
+            with open(output_path, "r", encoding="utf-8", errors="ignore") as f:
+                return True, f.read()
+
+        err = (proc.stderr or proc.stdout or "Unknown error").strip()
+        return False, err[:1900]
+
+
+@bot.command(name="promdeobf")
+async def promdeobf(ctx: commands.Context, *, text: str = ""):
+    code = await extract_code(ctx, text)
+
+    if not code or not code.strip():
+        await ctx.reply(
+            "Attach a .lua/.luau file, reply to a message that has one, "
+            "put the code in a ```lua ... ``` code block, or provide a valid code link.",
+            allowed_mentions=NO_MENTIONS
+        )
+        return
+
+    async with ctx.typing():
+        loop = asyncio.get_running_loop()
+        ok, result = await loop.run_in_executor(None, run_promdeobf, code)
+
+    result = sanitize_output(result)
+
+    if not ok:
+        await ctx.reply(f"Error:\n```\n{result}\n```", allowed_mentions=NO_MENTIONS)
+        return
+
+    if len(result) > 1900:
+        file = discord.File(io.BytesIO(result.encode("utf-8")), filename="deobfuscated.lua")
+        await ctx.reply("deobfuscated, attached file:", file=file, allowed_mentions=NO_MENTIONS)
     else:
         await ctx.reply(f"Result:\n```lua\n{result}\n```", allowed_mentions=NO_MENTIONS)
 

@@ -3716,7 +3716,7 @@ makeProxy = function(name: string): any
                     pmt._ctorName = "Vector3"
                     return proxy
                 end
-                return 0
+                return 0 -- Dot/Angle return a number
             elseif fieldName == "ToHSV" then
                 return 0, 0, 0, 0
             elseif fieldName == "ToHex" then
@@ -6449,16 +6449,7 @@ local function createEnv()
     end
     env.getgenv = function() return env end
     env.getrenv = function() return setmetatable({}, { __index = env }) end
-    local _huiProxy = makeProxy("CoreGui")
-    do
-        local hmt = getmetatable(_huiProxy)
-        hmt._className = "CoreGui"
-        hmt._storedValues["ClassName"] = "CoreGui"
-        hmt._setKeys["ClassName"] = true
-        hmt._storedValues["Name"] = "CoreGui"
-        hmt._setKeys["Name"] = true
-    end
-    env.gethui = function() return _huiProxy end
+    env.gethui = function() return env.game end
     env.gethwid = function() return "sandbox-hwid-12345" end
     env.getcustomasset = function() return "rbxasset://temp" end
     env.getinstances = function() return {} end
@@ -6930,7 +6921,6 @@ local function createEnv()
         package = true,
         loadfile = true,
         io = true,
-        os = true,
     }
     setmetatable(env, {
         __index = function(t, k)
@@ -6975,7 +6965,7 @@ local function createEnv()
             if k == "getscriptbytecode" then return function() return "" end end
             if k == "decompile" then return function() return "" end end
             if k == "getscripthash" then return function() return "" end end
-            if k == "gethui" then return function() return _huiProxy end end
+            if k == "gethui" then return function() return env.game end end
             if k == "gethwid" then return function() return "sandbox" end end
             if k == "getcustomasset" then return function() return "rbxasset://temp" end end
             if k == "syn" then return setmetatable({request=function() return {StatusCode=200,Body="",Success=true} end}, {__index=function() return function() return nil end end}) end
